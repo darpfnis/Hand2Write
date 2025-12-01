@@ -804,7 +804,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, MSG_ERROR, "Намалюйте текст!")
                 return
         else:
-            QMessageBox.warning(self, "Помилка", "Оберіть режим роботи!")
+            QMessageBox.warning(self, MSG_ERROR, "Оберіть режим роботи!")
             return
         
         # Перевірка, чи файл існує
@@ -870,7 +870,7 @@ class MainWindow(QMainWindow):
                         # Перевіряємо, чи віджет все ще існує
                         _ = result_text.placeholderText()
                         self.result_text = result_text
-                        logger.info(f"[MainWindow] Знайдено result_text через атрибут поточного віджету")
+                        logger.info("[MainWindow] Знайдено result_text через атрибут поточного віджету")
                         return result_text
                     except RuntimeError:
                         # Віджет був видалений
@@ -881,7 +881,7 @@ class MainWindow(QMainWindow):
                 placeholder = widget.placeholderText()
                 if placeholder and MSG_RECOGNIZED_TEXT in placeholder:
                     self.result_text = widget
-                    logger.info(f"[MainWindow] Знайдено result_text в поточному віджеті через findChildren")
+                    logger.info("[MainWindow] Знайдено result_text в поточному віджеті через findChildren")
                     return widget
         
         # Якщо не знайдено, шукаємо в обох інтерфейсах
@@ -895,7 +895,7 @@ class MainWindow(QMainWindow):
                         try:
                             _ = result_text.placeholderText()
                             self.result_text = result_text
-                            logger.info(f"[MainWindow] Знайдено result_text через атрибут інтерфейсу")
+                            logger.info("[MainWindow] Знайдено result_text через атрибут інтерфейсу")
                             return result_text
                         except RuntimeError:
                             pass
@@ -905,7 +905,7 @@ class MainWindow(QMainWindow):
                     placeholder = text_edit.placeholderText()
                     if placeholder and MSG_RECOGNIZED_TEXT in placeholder:
                         self.result_text = text_edit
-                        logger.info(f"[MainWindow] Знайдено result_text в інтерфейсі через findChildren")
+                        logger.info("[MainWindow] Знайдено result_text в інтерфейсі через findChildren")
                         return text_edit
         
         logger.warning("[MainWindow] Не вдалося знайти result_text")
@@ -964,7 +964,7 @@ class MainWindow(QMainWindow):
             try:
                 result_text.setPlainText(text)
                 result_text.ensureCursorVisible()  # Прокручуємо до початку тексту
-                logger.info(f"[MainWindow] Результат виведено в поле результату")
+                logger.info("[MainWindow] Результат виведено в поле результату")
             except Exception as e:
                 logger.error(f"[MainWindow] Помилка при виведенні результату: {e}")
                 QMessageBox.warning(self, MSG_ERROR, f"Не вдалося вивести результат: {e}")
@@ -983,7 +983,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         if hasattr(self, 'statusbar'):
             self.statusbar.showMessage(MSG_ERROR, 5000)
-        QMessageBox.critical(self, "Помилка", error_msg)
+        QMessageBox.critical(self, MSG_ERROR, error_msg)
         """Обробник помилки розпізнавання"""
         self.progress_bar.hide()
         self.statusbar.showMessage(MSG_ERROR, 5000)

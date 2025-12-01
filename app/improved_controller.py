@@ -199,8 +199,6 @@ class RecognitionWorker(QThread):
         
         # Фільтрація результатів перед відправкою в ШІ
         # Виключаємо явно неправильні результати
-        lang_name = "ukrainian" if self.language == OCRLanguage.UKRAINIAN else "english"
-        
         filtered_results = {}
         for engine, text in results.items():
             if not text or not text.strip():

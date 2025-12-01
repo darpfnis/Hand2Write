@@ -109,7 +109,7 @@ class WelcomeScreen(QWidget):
         """Створення кнопки режиму"""
         button_frame = ClickableFrame(title, callback)
         button_frame.setFixedSize(340, 200)
-        button_frame.setStyleSheet(f"""
+        button_frame.setStyleSheet("""
             ClickableFrame {{
                 background-color: white;
                 border: 3px solid {color};
@@ -142,7 +142,7 @@ class WelcomeScreen(QWidget):
         desc_label.setMinimumHeight(50)
         desc_font = QFont(DEFAULT_FONT, 11)
         desc_label.setFont(desc_font)
-        desc_label.setStyleSheet(f"color: #546E7A; background-color: transparent; padding: 5px;")
+        desc_label.setStyleSheet("color: #546E7A; background-color: transparent; padding: 5px;")
         frame_layout.addWidget(desc_label)
         
         return button_frame

@@ -94,32 +94,26 @@ class OCRConfig:
         """Отримання конфігурації препроцесингу"""
         return self.config.get('preprocessing', self.DEFAULT_PREPROCESSING.copy())
     
-    def get_llm_config(self) -> Dict[str, Any]:
-        """Отримання конфігурації LLM з автоматичною перевіркою доступності"""
-        llm_config = self.config.get('llm', self.DEFAULT_LLM_CONFIG.copy())
-        # Переконаємося, що модель є в конфігурації (якщо не вказана, використовуємо дефолтну)
-        if 'model' not in llm_config or not llm_config.get('model'):
-            llm_config['model'] = self.DEFAULT_LLM_CONFIG.get('model', 'llama3.2:1b')
-        # Перевірка змінних середовища (пріоритет над файлом конфігурації)
-        # Безпека: використовуємо змінні середовища, якщо вони доступні
+    def _apply_env_api_key(self, llm_config: Dict[str, Any]) -> None:
+        """Застосування API ключа зі змінної середовища"""
         env_api_key = os.getenv('OPENAI_API_KEY')
         if env_api_key:
-            # Пріоритет змінної середовища над файлом конфігурації
             llm_config['api_key'] = env_api_key
             llm_config['_use_env_key'] = True
-        elif not llm_config.get('api_key'):
-            # Якщо немає в конфігурації, перевіряємо змінну середовища
-            if os.getenv('OPENAI_API_KEY'):
-                llm_config['api_key'] = os.getenv('OPENAI_API_KEY')
-                llm_config['_use_env_key'] = True
-        
+        elif not llm_config.get('api_key') and os.getenv('OPENAI_API_KEY'):
+            llm_config['api_key'] = os.getenv('OPENAI_API_KEY')
+            llm_config['_use_env_key'] = True
+    
+    def _apply_env_api_url(self, llm_config: Dict[str, Any]) -> None:
+        """Застосування API URL зі змінної середовища"""
         env_api_url = os.getenv('LLM_API_URL')
         if env_api_url:
             llm_config['api_url'] = env_api_url
         elif not llm_config.get('api_url') and os.getenv('LLM_API_URL'):
             llm_config['api_url'] = os.getenv('LLM_API_URL')
-        
-        # Автоматична перевірка доступності LLM (якщо не встановлено явно)
+    
+    def _auto_detect_llm_availability(self, llm_config: Dict[str, Any]) -> None:
+        """Автоматична перевірка доступності LLM"""
         if llm_config.get('enabled') is None or llm_config.get('auto_detect', True):
             try:
                 from .llm_postprocessor import LLMPostProcessor
@@ -128,7 +122,6 @@ class OCRConfig:
                     api_key=llm_config.get('api_key'),
                     api_url=llm_config.get('api_url')
                 )
-                # Автоматично вмикаємо, якщо LLM доступний
                 if processor.is_available():
                     llm_config['enabled'] = True
                     llm_config['auto_detected'] = True
@@ -136,6 +129,20 @@ class OCRConfig:
                     llm_config['enabled'] = False
             except Exception:
                 llm_config['enabled'] = False
+    
+    def get_llm_config(self) -> Dict[str, Any]:
+        """Отримання конфігурації LLM з автоматичною перевіркою доступності"""
+        llm_config = self.config.get('llm', self.DEFAULT_LLM_CONFIG.copy())
+        # Переконаємося, що модель є в конфігурації (якщо не вказана, використовуємо дефолтну)
+        if 'model' not in llm_config or not llm_config.get('model'):
+            llm_config['model'] = self.DEFAULT_LLM_CONFIG.get('model', 'llama3.2:1b')
+        
+        # Перевірка змінних середовища (пріоритет над файлом конфігурації)
+        self._apply_env_api_key(llm_config)
+        self._apply_env_api_url(llm_config)
+        
+        # Автоматична перевірка доступності LLM
+        self._auto_detect_llm_availability(llm_config)
         
         return llm_config
     

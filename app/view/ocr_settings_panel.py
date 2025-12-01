@@ -291,20 +291,20 @@ class OCRSettingsPanel(QGroupBox):
     def get_selected_language(self) -> OCRLanguage:
         """Отримання вибраної мови"""
         lang_map = {
-            "Українська": OCRLanguage.UKRAINIAN,
-            "Англійська": OCRLanguage.ENGLISH,
-            "Обидві": OCRLanguage.BOTH
+            LANG_UKRAINIAN: OCRLanguage.UKRAINIAN,
+            LANG_ENGLISH: OCRLanguage.ENGLISH,
+            LANG_BOTH: OCRLanguage.BOTH
         }
         return lang_map.get(self.language_combo.currentText(), OCRLanguage.UKRAINIAN)
     
     def get_selected_language_string(self) -> str:
         """Отримання вибраної мови як рядок (для сумісності)"""
         lang_map = {
-            "Українська": "Українська",
-            "Англійська": "Англійська",
-            "Обидві": "Англійська"  # Для "Обидві" використовуємо англійську як fallback
+            LANG_UKRAINIAN: LANG_UKRAINIAN,
+            LANG_ENGLISH: LANG_ENGLISH,
+            LANG_BOTH: LANG_ENGLISH  # Для "Обидві" використовуємо англійську як fallback
         }
-        return lang_map.get(self.language_combo.currentText(), "Українська")
+        return lang_map.get(self.language_combo.currentText(), LANG_UKRAINIAN)
     
     def is_ai_correction_enabled(self) -> bool:
         """Чи увімкнена AI корекція"""

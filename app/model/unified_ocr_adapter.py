@@ -67,68 +67,82 @@ class UnifiedOCRAdapter:
         # Встановлення поточної стратегії
         self._set_strategy(self.engine_name)
     
-    def _get_strategy(self, engine: str) -> Optional[OCRStrategy]:
-        """Отримання стратегії (з глобальним кешуванням)"""
-        engine = engine.lower()
-        
-        # Спочатку перевіряємо глобальний кеш
+    def _get_strategy_from_cache(self, engine: str) -> Optional[OCRStrategy]:
+        """Отримання стратегії з кешу (глобального або локального)"""
         with _STRATEGIES_LOCK:
             if engine in _GLOBAL_STRATEGIES:
                 strategy = _GLOBAL_STRATEGIES[engine]
                 if strategy is not None:
-                    # Додаємо до локального кешу для швидкого доступу
                     self._strategies[engine] = strategy
                     logger.info(f"[OCR] ✓ Використовується стратегія {engine} з глобального кешу (моделі вже в пам'яті)")
                     return strategy
+        return None
+    
+    def _create_strategy_instance(self, engine: str) -> Optional[OCRStrategy]:
+        """Створення екземпляра стратегії"""
+        logger.info(f"[OCR] Створення стратегії для рушія: {engine}")
+        import time
+        strategy_start = time.time()
         
-        # Якщо немає в глобальному кеші, перевіряємо локальний
+        if engine == 'tesseract':
+            return TesseractStrategy()
+        if engine == 'easyocr':
+            return EasyOCRStrategy()
+        if engine == 'paddleocr':
+            logger.info("[OCR] Створення PaddleOCRStrategy...")
+            try:
+                strategy = PaddleOCRStrategy()
+                strategy_elapsed = time.time() - strategy_start
+                logger.info(f"[OCR] PaddleOCRStrategy створено за {strategy_elapsed:.2f} секунд")
+                return strategy
+            except Exception as e:
+                strategy_elapsed = time.time() - strategy_start
+                logger.error(f"[OCR] Помилка створення PaddleOCRStrategy (через {strategy_elapsed:.2f} сек): {e}")
+                import traceback
+                logger.error(f"[OCR] Traceback: {traceback.format_exc()}")
+                raise
+        
+        logger.warning(f"Невідомий рушій: {engine}")
+        return None
+    
+    def _check_and_cache_strategy(self, engine: str, strategy: OCRStrategy) -> Optional[OCRStrategy]:
+        """Перевірка доступності стратегії та додавання до кешу"""
+        logger.info(f"[OCR] Перевірка доступності стратегії {engine}...")
+        try:
+            is_available = strategy.is_available()
+            logger.info(f"[OCR] Стратегія {engine} доступна: {is_available}")
+        except Exception as e:
+            logger.error(f"[OCR] Помилка перевірки доступності стратегії {engine}: {e}")
+            is_available = False
+        
+        if is_available:
+            with _STRATEGIES_LOCK:
+                _GLOBAL_STRATEGIES[engine] = strategy
+            self._strategies[engine] = strategy
+            logger.info(f"[OCR] Стратегія {engine} додана до глобального та локального кешу")
+            return strategy
+        
+        logger.warning(f"[OCR] Стратегія {engine} не доступна")
+        with _STRATEGIES_LOCK:
+            _GLOBAL_STRATEGIES[engine] = None
+        return None
+    
+    def _get_strategy(self, engine: str) -> Optional[OCRStrategy]:
+        """Отримання стратегії (з глобальним кешуванням)"""
+        engine = engine.lower()
+        
+        # Спочатку перевіряємо кеш
+        cached_strategy = self._get_strategy_from_cache(engine)
+        if cached_strategy:
+            return cached_strategy
+        
+        # Якщо немає в кеші, створюємо нову стратегію
         if engine not in self._strategies:
             try:
-                logger.info(f"[OCR] Створення стратегії для рушія: {engine}")
-                import time
-                strategy_start = time.time()
-                
-                if engine == 'tesseract':
-                    strategy = TesseractStrategy()
-                elif engine == 'easyocr':
-                    strategy = EasyOCRStrategy()
-                elif engine == 'paddleocr':
-                    logger.info(f"[OCR] Створення PaddleOCRStrategy...")
-                    try:
-                        strategy = PaddleOCRStrategy()
-                        strategy_elapsed = time.time() - strategy_start
-                        logger.info(f"[OCR] PaddleOCRStrategy створено за {strategy_elapsed:.2f} секунд")
-                    except Exception as e:
-                        strategy_elapsed = time.time() - strategy_start
-                        logger.error(f"[OCR] Помилка створення PaddleOCRStrategy (через {strategy_elapsed:.2f} сек): {e}")
-                        import traceback
-                        logger.error(f"[OCR] Traceback: {traceback.format_exc()}")
-                        raise
-                else:
-                    logger.warning(f"Невідомий рушій: {engine}")
+                strategy = self._create_strategy_instance(engine)
+                if strategy is None:
                     return None
-                
-                strategy_elapsed = time.time() - strategy_start
-                logger.info(f"[OCR] Перевірка доступності стратегії {engine}...")
-                try:
-                    is_available = strategy.is_available()
-                    logger.info(f"[OCR] Стратегія {engine} доступна: {is_available}")
-                except Exception as e:
-                    logger.error(f"[OCR] Помилка перевірки доступності стратегії {engine}: {e}")
-                    is_available = False
-                
-                if is_available:
-                    # Додаємо до глобального кешу (щоб зберегти моделі в пам'яті)
-                    with _STRATEGIES_LOCK:
-                        _GLOBAL_STRATEGIES[engine] = strategy
-                    # Додаємо до локального кешу
-                    self._strategies[engine] = strategy
-                    logger.info(f"[OCR] Стратегія {engine} додана до глобального та локального кешу")
-                else:
-                    logger.warning(f"[OCR] Стратегія {engine} не доступна")
-                    with _STRATEGIES_LOCK:
-                        _GLOBAL_STRATEGIES[engine] = None
-                    return None
+                return self._check_and_cache_strategy(engine, strategy)
             except Exception as e:
                 logger.error(f"[OCR] Помилка ініціалізації стратегії {engine}: {e}")
                 import traceback
@@ -152,10 +166,10 @@ class UnifiedOCRAdapter:
             if engine != 'tesseract':
                 logger.info(f"[OCR] Автоматичне перемикання на Tesseract (оригінальний рушій '{engine}' недоступний)")
                 if self._set_strategy('tesseract'):
-                    logger.info(f"[OCR] Успішно перемкнуто на Tesseract")
+                    logger.info("[OCR] Успішно перемкнуто на Tesseract")
                     return True
                 else:
-                    logger.error(f"[OCR] Не вдалося перемкнутися на Tesseract")
+                    logger.error("[OCR] Не вдалося перемкнутися на Tesseract")
             return False
     
     def get_available_engines(self) -> List[str]:
@@ -221,9 +235,9 @@ class UnifiedOCRAdapter:
             # Перевірка стратегії
             if not self._current_strategy:
                 # Остання спроба - перемкнутися на Tesseract
-                logger.warning(f"[OCR] ⚠️ Поточна стратегія не встановлена, спроба перемкнутися на Tesseract")
+                logger.warning("[OCR] ⚠️ Поточна стратегія не встановлена, спроба перемкнутися на Tesseract")
                 if self._set_strategy('tesseract'):
-                    logger.info(f"[OCR] ✓ Успішно перемкнуто на Tesseract")
+                    logger.info("[OCR] ✓ Успішно перемкнуто на Tesseract")
                 else:
                     raise RuntimeError("Жоден OCR рушій не доступний")
             
@@ -245,7 +259,7 @@ class UnifiedOCRAdapter:
             
             # Логуємо, який рушій використовується
             strategy_name = self._current_strategy.get_name()
-            logger.info(f"[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
+            logger.info("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
             logger.info(f"[OCR] Використовується рушій: {strategy_name}")
             logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
             logger.info(f"[OCR] Мова розпізнавання: {language}")
@@ -254,11 +268,11 @@ class UnifiedOCRAdapter:
             # Розпізнавання
             import time
             recognize_start = time.time()
-            print(f"[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====", flush=True)
+            print("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====", flush=True)
             print(f"[OCR] Використовується рушій: {strategy_name}", flush=True)
             print(f"[OCR] Запитаний рушій: {self.engine_name}", flush=True)
             print(f"[OCR] Мова: {language}", flush=True)
-            logger.info(f"[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
+            logger.info("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
             logger.info(f"[OCR] Використовується рушій: {strategy_name}")
             logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
             logger.info(f"[OCR] Мова розпізнавання: {language}")
@@ -295,7 +309,7 @@ class UnifiedOCRAdapter:
                         if text:
                             print(f"[OCR] Перші 100 символів: {text[:100]}...", flush=True)
                         else:
-                            print(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ!", flush=True)
+                            print("[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ!", flush=True)
                     except Exception as strategy_error:
                         logger.error(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", exc_info=True)
                         print(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", flush=True)
@@ -312,7 +326,7 @@ class UnifiedOCRAdapter:
                 else:
                     logger.warning(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!")
                     print(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!", flush=True)
-                logger.info(f"[OCR] ===== ЗАВЕРШЕНО РОЗПІЗНАВАННЯ =====")
+                logger.info("[OCR] ===== ЗАВЕРШЕНО РОЗПІЗНАВАННЯ =====")
             except Exception as e:
                 recognize_elapsed = time.time() - recognize_start
                 error_msg = f"[OCR] Помилка в strategy.recognize() після {recognize_elapsed:.2f} секунд: {e}"
@@ -346,7 +360,7 @@ class UnifiedOCRAdapter:
                     else:
                         # Fallback на просте виправлення
                         text = LLMPostProcessor.simple_correction(text)
-                        logger.warning(f"[OCR] LLM валідація не пройдена, використано просте виправлення")
+                        logger.warning("[OCR] LLM валідація не пройдена, використано просте виправлення")
                 except Exception as e:
                     logger.warning(f"Помилка LLM пост-обробки: {e}")
                     # Використовуємо просте виправлення
@@ -375,7 +389,7 @@ class UnifiedOCRAdapter:
                     logger.error(f"[OCR] ✗ Fallback на Tesseract також не вдався: {fallback_error}")
             
             # Якщо все не вдалося, повертаємо порожній рядок
-            logger.error(f"[OCR] ✗ Всі спроби розпізнавання не вдалися")
+            logger.error("[OCR] ✗ Всі спроби розпізнавання не вдалися")
             return ""
     
     def switch_engine(self, engine: str) -> bool:

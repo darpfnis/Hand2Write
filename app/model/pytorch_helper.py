@@ -84,7 +84,7 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
                             # Це системна проблема, не проблема коду
                             if error_code == 1114:
                                 logger.warning(f"✗ {dll_name} не може бути ініціалізована (WinError 1114)")
-                                logger.warning(f"  Це системна проблема. Перевірте Visual C++ Redistributables та перевстановіть PyTorch.")
+                                logger.warning("  Це системна проблема. Перевірте Visual C++ Redistributables та перевстановіть PyTorch.")
                             else:
                                 logger.debug(f"Не вдалося завантажити {dll_name}, код помилки: {error_code}")
                     except Exception as e:
@@ -160,7 +160,7 @@ def setup_pytorch_path() -> bool:
                 # Переміщуємо на початок
                 path_parts.remove(torch_lib_str)
                 os.environ["PATH"] = torch_lib_str + os.pathsep + os.pathsep.join(path_parts)
-                logger.info(f"✓ PyTorch lib переміщено на початок PATH")
+                logger.info("✓ PyTorch lib переміщено на початок PATH")
             
             # Спробуємо явно завантажити критичні DLL перед імпортом torch
             logger.info(f"Спроба явного завантаження PyTorch DLL з {torch_lib_str}...")
@@ -168,7 +168,7 @@ def setup_pytorch_path() -> bool:
             
             return True
         else:
-            logger.warning(f"✗ torch/lib не знайдено")
+            logger.warning("✗ torch/lib не знайдено")
         
         return False
     except Exception as e:
@@ -225,14 +225,14 @@ def check_pytorch_availability() -> Tuple[bool, Optional[str], Optional[str]]:
             # 2. Конфлікт версій DLL
             # 3. Пошкоджені файли PyTorch
             # 4. Проблеми з правами доступу
-            logger.warning(f"✗ PyTorch DLL не може бути ініціалізована (WinError 1114)")
-            logger.warning(f"  Це системна проблема. Програма працюватиме з Tesseract.")
-            logger.warning(f"  Для вирішення проблеми:")
-            logger.warning(f"  1. Перевстановіть Visual C++ Redistributables: https://aka.ms/vs/17/release/vc_redist.x64.exe")
-            logger.warning(f"  2. Перезапустіть комп'ютер")
-            logger.warning(f"  3. Перевстановіть PyTorch:")
-            logger.warning(f"     pip uninstall torch torchvision torchaudio -y")
-            logger.warning(f"     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu")
+            logger.warning("✗ PyTorch DLL не може бути ініціалізована (WinError 1114)")
+            logger.warning("  Це системна проблема. Програма працюватиме з Tesseract.")
+            logger.warning("  Для вирішення проблеми:")
+            logger.warning("  1. Перевстановіть Visual C++ Redistributables: https://aka.ms/vs/17/release/vc_redist.x64.exe")
+            logger.warning("  2. Перезапустіть комп'ютер")
+            logger.warning("  3. Перевстановіть PyTorch:")
+            logger.warning("     pip uninstall torch torchvision torchaudio -y")
+            logger.warning("     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu")
             return False, None, f"Помилка завантаження PyTorch DLL: {e}"
         logger.error(f"✗ Помилка ОС при завантаженні PyTorch: {error_msg}")
         return False, None, f"Помилка ОС при завантаженні PyTorch: {e}"

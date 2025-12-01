@@ -173,7 +173,6 @@ class TextExporter:
             except Exception as e:
                 print(f"Не вдалося зареєструвати шрифт для кирилиці: {e}")
                 # Використовуємо стандартний шрифт, але спробуємо обійти проблему
-                pass
 
             # Стиль заголовку
             title_style = ParagraphStyle(
