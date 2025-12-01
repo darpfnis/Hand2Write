@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Старі файли, що більше не використовуються
+tools/check_training_data.py
+**/check_training_data.py
+
+# Моделі та дані
+models/
+data/
+*.h5
+*.pth
+*.pt
+*.onnx
+
+# Логи
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+

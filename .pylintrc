@@ -1,0 +1,125 @@
+[MASTER]
+# Python code to execute, usually for sys.path manipulation such as pygtk.require().
+init-hook='import sys; sys.path.append(".")'
+
+[MESSAGES CONTROL]
+# Disable specific warnings
+disable=
+    # False positives for PyQt6
+    no-name-in-module,
+    # False positives for cv2
+    no-member,
+    # Import errors (relative imports are fine)
+    import-error,
+    # Undefined variables in pyinstaller spec
+    undefined-variable,
+    # Too many arguments/branches/statements (refactoring needed)
+    too-many-arguments,
+    too-many-branches,
+    too-many-statements,
+    too-many-locals,
+    too-many-nested-blocks,
+    too-many-return-statements,
+    too-many-instance-attributes,
+    too-many-public-methods,
+    too-few-public-methods,
+    # Code style (less critical)
+    too-many-lines,
+    # Import outside toplevel (some are intentional)
+    import-outside-toplevel,
+    # Catching general exceptions (sometimes needed)
+    broad-exception-caught,
+    # Unused arguments (may be needed for interface compatibility)
+    unused-argument,
+    # Redefining outer name (sometimes needed)
+    redefined-outer-name,
+    reimported,
+    # Invalid names (some constants are fine as-is)
+    invalid-name,
+    # No else return (sometimes clearer with else)
+    no-else-return,
+    # Unnecessary pass (sometimes needed for clarity)
+    unnecessary-pass,
+    # Consider using with (sometimes not applicable)
+    consider-using-with,
+    # Access member before definition (false positives)
+    access-member-before-definition,
+    # Pointless string statement (sometimes needed for clarity)
+    pointless-string-statement,
+    # Unnecessary lambda (sometimes clearer)
+    unnecessary-lambda,
+    # Attribute defined outside init (sometimes needed)
+    attribute-defined-outside-init,
+    # Wrong import order (less critical)
+    wrong-import-order,
+    ungrouped-imports,
+    # Unused imports (may be needed for type hints)
+    unused-import,
+    # Inconsistent return statements (sometimes needed)
+    inconsistent-return-statements,
+    # Global statement (sometimes needed)
+    global-statement,
+    # Protected access (sometimes needed)
+    protected-access,
+    # No else continue (sometimes clearer)
+    no-else-continue,
+    # Use maxsplit arg (less critical)
+    use-maxsplit-arg,
+    # F-string without interpolation (sometimes clearer)
+    f-string-without-interpolation,
+    # Trailing whitespace (less critical, can be auto-fixed)
+    trailing-whitespace,
+    trailing-newlines,
+    # Line too long (less critical, can be auto-fixed)
+    line-too-long,
+    # Logging f-string interpolation (less critical)
+    logging-fstring-interpolation,
+    # Missing final newline (less critical)
+    missing-final-newline,
+    # Wrong import position (less critical)
+    wrong-import-position,
+    # Bare except (sometimes needed)
+    bare-except,
+    # Unused variables (may be needed for debugging)
+    unused-variable,
+    # Too many positional arguments (interface compatibility)
+    too-many-positional-arguments,
+    # Duplicate code (acceptable in some cases)
+    duplicate-code,
+    # Global variable not assigned (false positives)
+    global-variable-not-assigned,
+    # Raise missing from (less critical)
+    raise-missing-from
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=100
+
+[BASIC]
+# Good variable names which should always be accepted, separated by a comma
+good-names=i,j,k,ex,Run,_,e,f,doc,app,img,ocr,llm,ui,id,ok
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=7
+# Maximum number of attributes for a class
+max-attributes=15
+# Maximum number of boolean expressions in a if statement
+max-bool-expr=5
+# Maximum number of branch for function / method body
+max-branches=20
+# Maximum number of locals for function / method body
+max-locals=20
+# Maximum number of parents for a class
+max-parents=7
+# Maximum number of public methods for a class
+max-public-methods=25
+# Maximum number of return / yield for function / method body
+max-returns=10
+# Maximum number of statements in function / method body
+max-statements=100
+
+[IMPORTS]
+# Allow wildcard imports
+allow-wildcard-with-all=yes
+

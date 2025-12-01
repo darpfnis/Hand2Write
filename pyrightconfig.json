@@ -1,0 +1,10 @@
+{
+    "exclude": [
+        "**/tools/check_training_data.py",
+        "**/tools/**/check_training_data.py",
+        "tools/**"
+    ],
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none"
+}
+
