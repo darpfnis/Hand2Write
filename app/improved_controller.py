@@ -271,6 +271,7 @@ class RecognitionWorker(QThread):
             score += len(text_stripped) * 0.1
             
             # Для української: перевірка наявності кирилиці
+            has_cyrillic = False
             if self.language == OCRLanguage.UKRAINIAN:
                 has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text_stripped)
                 has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in text_stripped)

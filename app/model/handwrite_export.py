@@ -8,7 +8,7 @@ from datetime import datetime
 
 class TextExporter:
     """Клас для експорту тексту у різні формати"""
-
+    
     def __init__(self):
         """Ініціалізація експортера.
         
@@ -16,15 +16,15 @@ class TextExporter:
         Всі необхідні налаштування виконуються в методах експорту.
         """
         pass
-
+        
     def export_txt(self, text, file_path):
         """
         Експорт у текстовий файл
-
+        
         Args:
             text: текст для експорту
             file_path: шлях до файлу
-
+            
         Returns:
             True при успіху, False при помилці
         """
@@ -35,33 +35,33 @@ class TextExporter:
         except Exception as e:
             print(f"Помилка при збереженні TXT: {e}")
             return False
-
+            
     def export_docx(self, text, file_path):
         """
         Експорт у Word документ
-
+        
         Args:
             text: текст для експорту
             file_path: шлях до файлу
-
+            
         Returns:
             True при успіху, False при помилці
         """
         try:
             from docx import Document
             from docx.shared import Pt
-
+            
             doc = Document()
-
+            
             # Додавання заголовку
             doc.add_heading('Розпізнаний текст', level=1)
-
+            
             # Додавання дати
             date_paragraph = doc.add_paragraph()
             date_paragraph.add_run(
                 f'Дата створення: {datetime.now().strftime("%d.%m.%Y %H:%M")}'
             ).italic = True
-
+            
             # Додавання тексту
             for line in text.split('\n'):
                 if line.strip():
@@ -72,26 +72,26 @@ class TextExporter:
                         run.font.size = Pt(12)
                 else:
                     doc.add_paragraph()  # Порожній рядок
-
+                    
             # Збереження
             doc.save(file_path)
             return True
-
+            
         except ImportError:
             print("Модуль python-docx не встановлено. Встановіть: pip install python-docx")
             return False
         except Exception as e:
             print(f"Помилка при збереженні DOCX: {e}")
             return False
-
+            
     def export_pdf(self, text, file_path):
         """
         Експорт у PDF файл
-
+        
         Args:
             text: текст для експорту
             file_path: шлях до файлу
-
+            
         Returns:
             True при успіху, False при помилці
         """
@@ -104,7 +104,7 @@ class TextExporter:
             from reportlab.lib.colors import HexColor
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
-
+            
             # Створення PDF
             doc = SimpleDocTemplate(
                 file_path,
@@ -114,10 +114,10 @@ class TextExporter:
                 topMargin=2*cm,
                 bottomMargin=2*cm
             )
-
+            
             story = []
             styles = getSampleStyleSheet()
-
+            
             # Реєстрація шрифту, який підтримує кирилицю
             # Використовуємо системні шрифти або вбудовані шрифти ReportLab
             font_name = 'Helvetica'  # За замовчуванням
@@ -173,7 +173,7 @@ class TextExporter:
             except Exception as e:
                 print(f"Не вдалося зареєструвати шрифт для кирилиці: {e}")
                 # Використовуємо стандартний шрифт, але спробуємо обійти проблему
-
+                
             # Стиль заголовку
             title_style = ParagraphStyle(
                 'CustomTitle',
@@ -184,7 +184,7 @@ class TextExporter:
                 alignment=TA_CENTER,
                 fontName=font_name
             )
-
+            
             # Стиль дати
             date_style = ParagraphStyle(
                 'DateStyle',
@@ -195,7 +195,7 @@ class TextExporter:
                 alignment=TA_CENTER,
                 fontName=font_name
             )
-
+            
             # Стиль основного тексту
             body_style = ParagraphStyle(
                 'BodyStyle',
@@ -205,60 +205,64 @@ class TextExporter:
                 alignment=TA_LEFT,
                 fontName=font_name
             )
-
+            
             # Додавання заголовку
             story.append(Paragraph("Розпізнаний текст", title_style))
-
+            
             # Додавання дати
             date_text = f"Дата створення: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             story.append(Paragraph(date_text, date_style))
-
+            
             story.append(Spacer(1, 0.5*cm))
-
+            
             # Додавання тексту
             for line in text.split('\n'):
                 if line.strip():
                     # Екранування спеціальних символів для ReportLab
                     # ReportLab вимагає екранування XML-символів
-                    safe_line = (line
-                                .replace('&', '&amp;')
-                                .replace('<', '&lt;')
-                                .replace('>', '&gt;')
-                                .replace('"', '&quot;')
-                                .replace("'", '&#39;'))
+                    safe_line = (
+                        line.replace('&', '&amp;')
+                        .replace('<', '&lt;')
+                        .replace('>', '&gt;')
+                        .replace('"', '&quot;')
+                        .replace("'", '&#39;')
+                    )
                     try:
                         story.append(Paragraph(safe_line, body_style))
-                        story.append(Spacer(1, 0.2*cm))
+                        story.append(Spacer(1, 0.2 * cm))
                     except Exception as e:
                         # Якщо не вдалося додати параграф (наприклад, через проблеми з кодуванням),
                         # спробуємо додати як простий текст
                         print(f"Помилка при додаванні рядка в PDF: {e}")
                         # Додаємо як простий текст без форматування
                         from reportlab.platypus import Preformatted
-                        story.append(Preformatted(line, body_style, maxLineLength=80))
-                        story.append(Spacer(1, 0.2*cm))
-                else:
-                    story.append(Spacer(1, 0.3*cm))
 
+                        story.append(
+                            Preformatted(line, body_style, maxLineLength=80)
+                        )
+                        story.append(Spacer(1, 0.2 * cm))
+                else:
+                    story.append(Spacer(1, 0.3 * cm))
+                    
             # Побудова PDF
             doc.build(story)
             return True
-
+            
         except ImportError:
             print("Модуль reportlab не встановлено. Встановіть: pip install reportlab")
             return False
         except Exception as e:
             print(f"Помилка при збереженні PDF: {e}")
             return False
-
+            
     def export_html(self, text, file_path):
         """
         Експорт у HTML файл
-
+        
         Args:
             text: текст для експорту
             file_path: шлях до файлу
-
+            
         Returns:
             True при успіху, False при помилці
         """
@@ -301,16 +305,16 @@ class TextExporter:
 </body>
 </html>
 """
-
+            
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-
+                
             return True
-
+            
         except Exception as e:
             print(f"Помилка при збереженні HTML: {e}")
             return False
-
+            
     def _escape_html(self, text):
         """Екранування HTML спецсимволів"""
         return (text

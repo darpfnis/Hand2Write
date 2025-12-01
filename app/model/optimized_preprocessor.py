@@ -49,65 +49,11 @@ class OptimizedPreprocessor:
             ValueError: якщо зображення некоректне або порожнє
         """
         try:
-            # Валідація вхідного зображення
-            if image is None:
-                raise ValueError("Зображення не може бути None")
-            if image.size == 0:
-                raise ValueError("Зображення порожнє")
-            if len(image.shape) < 2 or len(image.shape) > 3:
-                raise ValueError(f"Невірна розмірність зображення: {image.shape}")
-            
-            # Конвертація в grayscale
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = image.copy()
-            
-            # Перевірка типу даних
+            self._validate_image(image)
+            gray = self._to_grayscale_uint8(image)
+            gray = self._apply_preprocessing_pipeline(gray)
             if gray.dtype != np.uint8:
                 gray = gray.astype(np.uint8)
-            
-            # 1. Збільшення маленьких зображень
-            if self.config.get('upscale_small', True):
-                gray = self._upscale_if_needed(gray)
-            
-            # 2. Видалення рамок (опціонально)
-            if self.config.get('remove_borders', False):
-                gray = self._remove_borders(gray)
-            
-            # 3. Покращення контрасту
-            if self.config.get('enhance_contrast', True):
-                gray = self._enhance_contrast(gray)
-            
-            # 4. Легке видалення шумів (для рукописного тексту)
-            if self.config.get('light_denoise', True):
-                gray = self._light_denoise(gray)
-            elif self.config.get('denoise', False):
-                gray = self._denoise(gray)
-            
-            # 5. Покращення різкості (тільки якщо увімкнено)
-            if self.config.get('sharpen', False):
-                gray = self._sharpen(gray)
-            
-            # 6. Бінаризація (тільки якщо увімкнено)
-            if self.config.get('binarization', False):
-                gray = self._binarize(gray)
-            
-            # 7. Морфологічні операції (тільки якщо увімкнено)
-            if self.config.get('morphology', False):
-                gray = self._morphological_operations(gray)
-            
-            # 8. Вирівнювання (deskewing)
-            if self.config.get('deskew', True):
-                gray = self._deskew(gray)
-            
-            # 9. Фінальна нормалізація та покращення
-            gray = self._final_enhancement(gray)
-            
-            # Фінальна перевірка
-            if gray.dtype != np.uint8:
-                gray = gray.astype(np.uint8)
-            
             return gray
         except Exception as e:
             logger.error(f"Помилка обробки зображення: {e}")
@@ -115,6 +61,68 @@ class OptimizedPreprocessor:
             if len(image.shape) == 3:
                 return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             return image.astype(np.uint8) if image.dtype != np.uint8 else image
+
+    def _validate_image(self, image: np.ndarray) -> None:
+        """Валідація вхідного зображення."""
+        if image is None:
+            raise ValueError("Зображення не може бути None")
+        if image.size == 0:
+            raise ValueError("Зображення порожнє")
+        if len(image.shape) < 2 or len(image.shape) > 3:
+            raise ValueError(f"Невірна розмірність зображення: {image.shape}")
+
+    @staticmethod
+    def _to_grayscale_uint8(image: np.ndarray) -> np.ndarray:
+        """Конвертація зображення в формат grayscale uint8."""
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        if gray.dtype != np.uint8:
+            gray = gray.astype(np.uint8)
+        return gray
+
+    def _apply_preprocessing_pipeline(self, gray: np.ndarray) -> np.ndarray:
+        """
+        Послідовне застосування всіх кроків препроцесингу
+        згідно з конфігурацією.
+        """
+        # 1. Збільшення маленьких зображень
+        if self.config.get('upscale_small', True):
+            gray = self._upscale_if_needed(gray)
+
+        # 2. Видалення рамок (опціонально)
+        if self.config.get('remove_borders', False):
+            gray = self._remove_borders(gray)
+
+        # 3. Покращення контрасту
+        if self.config.get('enhance_contrast', True):
+            gray = self._enhance_contrast(gray)
+
+        # 4. Легке видалення шумів (для рукописного тексту)
+        if self.config.get('light_denoise', True):
+            gray = self._light_denoise(gray)
+        elif self.config.get('denoise', False):
+            gray = self._denoise(gray)
+
+        # 5. Покращення різкості (тільки якщо увімкнено)
+        if self.config.get('sharpen', False):
+            gray = self._sharpen(gray)
+
+        # 6. Бінаризація (тільки якщо увімкнено)
+        if self.config.get('binarization', False):
+            gray = self._binarize(gray)
+
+        # 7. Морфологічні операції (тільки якщо увімкнено)
+        if self.config.get('morphology', False):
+            gray = self._morphological_operations(gray)
+
+        # 8. Вирівнювання (deskewing)
+        if self.config.get('deskew', True):
+            gray = self._deskew(gray)
+
+        # 9. Фінальна нормалізація та покращення
+        return self._final_enhancement(gray)
     
     def _upscale_if_needed(self, image: np.ndarray, min_size: int = 300) -> np.ndarray:
         """Збільшення маленьких зображень"""

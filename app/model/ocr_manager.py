@@ -304,11 +304,24 @@ class PaddleOCRStrategy(OCRStrategy):
                 lang=paddle_lang,
                 use_angle_cls=False
             )
-            logger.info(f"[PaddleOCR-OCRManager] ✓ PaddleOCR екземпляр створено для мови: {paddle_lang}")
-            print(f"[PaddleOCR-OCRManager] ✓ PaddleOCR екземпляр створено для мови: {paddle_lang}", flush=True)
+            logger.info(
+                "[PaddleOCR-OCRManager] ✓ PaddleOCR екземпляр створено для мови: %s",
+                paddle_lang,
+            )
+            print(
+                f"[PaddleOCR-OCRManager] ✓ PaddleOCR екземпляр створено для мови: {paddle_lang}",
+                flush=True,
+            )
         except Exception as e:
-            logger.error(f"[PaddleOCR-OCRManager] ✗ Помилка створення PaddleOCR для мови {paddle_lang}: {e}")
-            print(f"[PaddleOCR-OCRManager] ✗ Помилка створення PaddleOCR для мови {paddle_lang}: {e}", flush=True)
+            logger.error(
+                "[PaddleOCR-OCRManager] ✗ Помилка створення PaddleOCR для мови %s: %s",
+                paddle_lang,
+                e,
+            )
+            print(
+                f"[PaddleOCR-OCRManager] ✗ Помилка створення PaddleOCR для мови {paddle_lang}: {e}",
+                flush=True,
+            )
             raise
         
         self._instances[language] = instance
@@ -391,11 +404,16 @@ class PaddleOCRStrategy(OCRStrategy):
         
         # Розпізнавання
         # PaddleOCR v3.3.2 не підтримує параметр cls
-        
         try:
             results = ocr_instance.ocr(image)
-            logger.info(f"[PaddleOCR-OCRManager] ocr() завершено, тип результату: {type(results)}")
-            print(f"[PaddleOCR-OCRManager] ocr() завершено, тип результату: {type(results)}", flush=True)
+            logger.info(
+                "[PaddleOCR-OCRManager] ocr() завершено, тип результату: %s",
+                type(results),
+            )
+            print(
+                f"[PaddleOCR-OCRManager] ocr() завершено, тип результату: {type(results)}",
+                flush=True,
+            )
         except Exception as e:
             logger.error(f"[PaddleOCR-OCRManager] Помилка виклику ocr(): {e}", exc_info=True)
             print(f"[PaddleOCR-OCRManager] ✗ Помилка виклику ocr(): {e}", flush=True)
@@ -458,22 +476,42 @@ class PaddleOCRStrategy(OCRStrategy):
                 print("[PaddleOCR-OCRManager] Старий формат: список списків", flush=True)
                 try:
                     for idx, line in enumerate(first_item):
-                        logger.debug(f"[PaddleOCR-OCRManager] Обробка рядка {idx}: тип={type(line)}")
+                        logger.debug(
+                            "[PaddleOCR-OCRManager] Обробка рядка %s: тип=%s",
+                            idx,
+                            type(line),
+                        )
                         if isinstance(line, (list, tuple)) and len(line) >= 2:
                             text_item = line[1]
-                            if isinstance(text_item, (list, tuple)) and len(text_item) >= 1:
+                            if (
+                                isinstance(text_item, (list, tuple))
+                                and len(text_item) >= 1
+                            ):
                                 text_str = str(text_item[0]).strip()
                                 if text_str:
                                     text_parts.append(text_str)
-                                    logger.debug(f"[PaddleOCR-OCRManager] Додано текст: '{text_str}'")
+                                    logger.debug(
+                                        "[PaddleOCR-OCRManager] Додано текст: '%s'",
+                                        text_str,
+                                    )
                             elif isinstance(text_item, str):
                                 text_str = text_item.strip()
                                 if text_str:
                                     text_parts.append(text_str)
-                                    logger.debug(f"[PaddleOCR-OCRManager] Додано текст (рядок): '{text_str}'")
+                                    logger.debug(
+                                        "[PaddleOCR-OCRManager] Додано текст (рядок): '%s'",
+                                        text_str,
+                                    )
                 except Exception as e:
-                    logger.error(f"[PaddleOCR-OCRManager] Помилка обробки старого формату: {e}", exc_info=True)
-                    print(f"[PaddleOCR-OCRManager] ✗ Помилка обробки старого формату: {e}", flush=True)
+                    logger.error(
+                        "[PaddleOCR-OCRManager] Помилка обробки старого формату: %s",
+                        e,
+                        exc_info=True,
+                    )
+                    print(
+                        f"[PaddleOCR-OCRManager] ✗ Помилка обробки старого формату: {e}",
+                        flush=True,
+                    )
             
             # Обробка rec_texts з фільтрацією за впевненістю
             if rec_texts is not None:

@@ -263,7 +263,7 @@ class EasyOCRStrategy(OCRStrategy):
                 is_available, _, _ = check_pytorch_availability()
                 
                 if not is_available:
-                    raise RuntimeError(f"PyTorch не доступний: {error}")
+                    raise RuntimeError("PyTorch не доступний")
                 
                 import easyocr
                 logger.info(f"[EasyOCR] Створення Reader для мов: {easyocr_langs}")
@@ -433,11 +433,11 @@ class PaddleOCRStrategy(OCRStrategy):
     def _check_pytorch_availability(self) -> tuple[bool, str]:
         """Перевірка доступності PyTorch"""
         from .pytorch_helper import check_pytorch_availability, setup_pytorch_path
-        
-        setup_pytorch_path()
         import time
+
+        setup_pytorch_path()
         time.sleep(0.1)
-        
+
         pytorch_available, pytorch_version, _ = check_pytorch_availability()
         return pytorch_available, pytorch_version
     
@@ -447,17 +447,26 @@ class PaddleOCRStrategy(OCRStrategy):
             logger.info("[PaddleOCR] Спробуємо імпортувати paddle...")
             import time
             import_start = time.time()
-            import paddle
+            import paddle  # type: ignore[import]
             import_elapsed = time.time() - import_start
-            logger.info(f"[PaddleOCR] paddle успішно імпортовано за {import_elapsed:.2f} секунд")
-            logger.info("[PaddleOCR] paddle доступний, paddleocr буде перевірено при створенні екземпляра")
-            logger.info(f"[PaddleOCR] PaddleOCR доступний (PyTorch {pytorch_version})")
+            logger.info(
+                "[PaddleOCR] paddle успішно імпортовано за %.2f секунд",
+                import_elapsed,
+            )
+            logger.info(
+                "[PaddleOCR] paddle доступний, paddleocr буде перевірено при створенні екземпляра",
+            )
+            logger.info(
+                "[PaddleOCR] PaddleOCR доступний (PyTorch %s)", pytorch_version
+            )
             return True
         except ImportError as e:
-            logger.warning(f"PaddleOCR не доступний: PaddlePaddle не встановлено: {e}")
+            logger.warning(
+                "PaddleOCR не доступний: PaddlePaddle не встановлено: %s", e
+            )
             return False
         except Exception as e:
-            logger.warning(f"PaddleOCR не доступний: {e}")
+            logger.warning("PaddleOCR не доступний: %s", e)
             return False
     
     def _init(self):
@@ -477,7 +486,7 @@ class PaddleOCRStrategy(OCRStrategy):
                 self._available = False
                 _ENGINE_AVAILABILITY_CACHE[cache_key] = False
                 return
-            
+                
             paddle_available = self._check_paddlepaddle_availability(pytorch_version)
             self._available = paddle_available
             _ENGINE_AVAILABILITY_CACHE[cache_key] = paddle_available
@@ -792,11 +801,19 @@ class PaddleOCRStrategy(OCRStrategy):
                         try:
                             results = ocr_instance.predict(image)
                             ocr_time = time.time() - ocr_start
-                            print(f"[PaddleOCR] ✓ Метод predict() без параметрів виконано за {ocr_time:.2f} сек")
-                            logger.info(f"[PaddleOCR] ✓ Метод predict() без параметрів виконано за {ocr_time:.2f} сек")
+                            print(
+                                f"[PaddleOCR] ✓ Метод predict() без параметрів виконано за {ocr_time:.2f} сек"
+                            )
+                            logger.info(
+                                "[PaddleOCR] ✓ Метод predict() без параметрів виконано за %.2f сек",
+                                ocr_time,
+                            )
                         except Exception as e2:
                             ocr_time = time.time() - ocr_start
-                            logger.error(f"[PaddleOCR] ✗ Помилка predict() без параметрів: {e2}")
+                            logger.error(
+                                "[PaddleOCR] ✗ Помилка predict() без параметрів: %s",
+                                e2,
+                            )
                             raise
                 else:
                     raise RuntimeError("PaddleOCR не має методів ocr() або predict()")
@@ -972,13 +989,24 @@ class PaddleOCRStrategy(OCRStrategy):
                                         # ТИМЧАСОВО: прибираємо фільтрацію за впевненістю для діагностики
                                         # Додаємо всі тексти незалежно від впевненості
                                         filtered_texts.append(str(t).strip())
-                                        print(f"[PaddleOCR] Додано текст '{t}' з впевненістю {score:.3f}")
-                                        logger.info(f"[PaddleOCR] Додано текст '{t}' з впевненістю {score:.3f}")
+                                        print(
+                                            f"[PaddleOCR] Додано текст '{t}' з впевненістю {score:.3f}"
+                                        )
+                                        logger.info(
+                                            "[PaddleOCR] Додано текст '%s' з впевненістю %.3f",
+                                            t,
+                                            score,
+                                        )
                                     else:
                                         # Якщо немає scores, додаємо всі не порожні тексти
                                         filtered_texts.append(str(t).strip())
-                                        print(f"[PaddleOCR] Додано текст '{t}' (без перевірки впевненості)")
-                                        logger.info(f"[PaddleOCR] Додано текст '{t}' (без перевірки впевненості)")
+                                        print(
+                                            f"[PaddleOCR] Додано текст '{t}' (без перевірки впевненості)"
+                                        )
+                                        logger.info(
+                                            "[PaddleOCR] Додано текст '%s' (без перевірки впевненості)",
+                                            t,
+                                        )
                             
                             print(f"[PaddleOCR] Відфільтровано текстів: {len(filtered_texts)} з {len(rec_texts)}")
                             logger.info(f"[PaddleOCR] Відфільтровано текстів: {len(filtered_texts)} з {len(rec_texts)}")
@@ -1129,8 +1157,8 @@ class PaddleOCRStrategy(OCRStrategy):
                 except Exception as e:
                     print(f"[PaddleOCR] ✗ Не вдалося конвертувати результат: {e}")
                     logger.error(f"[PaddleOCR] ✗ Не вдалося конвертувати результат: {e}")
-                    text = ""
-                
+                text = ""
+            
                 # Якщо не вдалося, спробуємо витягти через атрибути
                 if not text:
                     try:

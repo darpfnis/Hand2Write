@@ -204,11 +204,11 @@ def check_pytorch_availability() -> Tuple[bool, Optional[str], Optional[str]]:
             test_tensor = torch.tensor([1.0])
             test_value = test_tensor.item()
             
-            if test_value == 1.0:
+            # Уникаємо прямого порівняння з плаваючою комою
+            if abs(test_value - 1.0) < 1e-6:
                 logger.info("✓ PyTorch працює коректно")
                 return True, version, None
-            else:
-                return False, version, "PyTorch tensor тест не пройдено"
+            return False, version, "PyTorch tensor тест не пройдено"
         except Exception as e:
             logger.error(f"✗ Помилка тесту PyTorch: {e}")
             return False, version, f"Помилка тесту PyTorch: {e}"

@@ -20,7 +20,7 @@ class TestOCRStrategy:
         """Тест, що OCRStrategy є абстрактним класом"""
         # Спробуємо створити екземпляр - має викликати TypeError
         with pytest.raises(TypeError):
-            OCRStrategy()
+            OCRStrategy()  # type: ignore[abstract]
 
 
 class TestTesseractStrategy:

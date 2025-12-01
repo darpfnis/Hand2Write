@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         # Використовуємо покращений контролер
         self.controller = ImprovedController(self)
         self.current_image_path = None
+        self._temp_image_path = None
         self.current_mode = None  # 'draw' або 'upload'
         self.current_language = LANG_UKRAINIAN  # Поточна мова для tooltip
         
@@ -747,7 +748,7 @@ class MainWindow(QMainWindow):
                     "Файл занадто великий. Максимальний розмір: 10 MB"
                 )
                 return
-            
+                
             # Валідація формату зображення
             from handwrite_config import Config
             if not Config.is_valid_image_format(file_path):
@@ -789,56 +790,104 @@ class MainWindow(QMainWindow):
             
     def convert_text(self):
         """Запуск розпізнавання тексту"""
-        # Отримуємо шлях до зображення
+        image_path = self._get_image_path_for_current_mode()
+        if image_path is None:
+            return
+
+        if not self._validate_image_path(image_path):
+            return
+
+        (
+            engine,
+            language_enum,
+            use_ai,
+            use_best_engine,
+            llm_config,
+        ) = self._get_ocr_settings_and_llm_config()
+
+        self._start_async_recognition(
+            image_path=image_path,
+            engine=engine,
+            language_enum=language_enum,
+            use_ai=use_ai,
+            use_best_engine=use_best_engine,
+            llm_config=llm_config,
+        )
+
+    def _get_image_path_for_current_mode(self) -> str | None:
+        """Отримання шляху до зображення залежно від поточного режиму."""
         if self.current_mode == 'upload':
             if not self.current_image_path:
                 QMessageBox.warning(self, MSG_ERROR, "Завантажте зображення!")
-                return
-            image_path = self.current_image_path
-        elif self.current_mode == 'draw':
+                return None
+            return self.current_image_path
+
+        if self.current_mode == 'draw':
             if not hasattr(self, 'canvas') or self.canvas is None:
                 QMessageBox.warning(self, MSG_ERROR, "Полотно не ініціалізовано!")
-                return
+                return None
             image_path = self.canvas.save_to_temp()
             if not image_path:
                 QMessageBox.warning(self, MSG_ERROR, "Намалюйте текст!")
-                return
-        else:
-            QMessageBox.warning(self, MSG_ERROR, "Оберіть режим роботи!")
-            return
-        
-        # Перевірка, чи файл існує
+                return None
+            return image_path
+
+        QMessageBox.warning(self, MSG_ERROR, "Оберіть режим роботи!")
+        return None
+
+    def _validate_image_path(self, image_path: str) -> bool:
+        """Перевірка існування файлу зображення."""
         if not os.path.exists(image_path):
-            QMessageBox.critical(self, MSG_ERROR, f"Файл зображення не знайдено: {image_path}")
-            return
-        
-        # Отримуємо налаштування з поточної панелі
+            QMessageBox.critical(
+                self, MSG_ERROR, f"Файл зображення не знайдено: {image_path}"
+            )
+            return False
+        return True
+
+    def _get_ocr_settings_and_llm_config(self):
+        """Отримання налаштувань OCR та LLM конфігурації."""
         ocr_settings = self._get_current_ocr_settings()
         engine = ocr_settings.get_selected_engine()
         language_enum = ocr_settings.get_selected_language()
         use_ai = ocr_settings.is_ai_correction_enabled()
         use_best_engine = ocr_settings.is_best_engine_enabled()
-        
-        # Отримуємо LLM конфігурацію
+
         from model.ocr_config import OCRConfig
+
         config = OCRConfig()
         llm_config = config.get_llm_config() if use_ai else None
-        
-        # Оновлюємо конфігурацію LLM, якщо потрібно
+
         if use_ai and llm_config:
-            llm_config['enabled'] = True
+            llm_config["enabled"] = True
         else:
-            llm_config = {'enabled': False}
-        
-        # Запускаємо асинхронне розпізнавання через покращений контролер
-        logger.info(f"[MainWindow] Запуск розпізнавання: режим={self.current_mode}, мова={language_enum.value}, рушій={engine.value}, найкращий={use_best_engine}")
+            llm_config = {"enabled": False}
+
+        return engine, language_enum, use_ai, use_best_engine, llm_config
+
+    def _start_async_recognition(
+        self,
+        image_path: str,
+        engine,
+        language_enum,
+        use_ai: bool,
+        use_best_engine: bool,
+        llm_config: dict,
+    ) -> None:
+        """Запуск асинхронного розпізнавання через покращений контролер."""
+        logger.info(
+            "[MainWindow] Запуск розпізнавання: режим=%s, мова=%s, рушій=%s, найкращий=%s",
+            self.current_mode,
+            language_enum.value,
+            engine.value,
+            use_best_engine,
+        )
         self.controller.recognize_text_async(
             image_path=image_path,
             engine=engine,
             language=language_enum,
             use_ai_correction=use_ai,
             use_best_engine=use_best_engine,
-            llm_config=llm_config
+            llm_config=llm_config,
         )
         
     def _update_result_text_reference(self):
@@ -865,16 +914,15 @@ class MainWindow(QMainWindow):
                 # Спробуємо через property
                 result_text = current_widget.property("result_text")
             if result_text is not None:
-                if result_text is not None:
-                    try:
-                        # Перевіряємо, чи віджет все ще існує
-                        _ = result_text.placeholderText()
-                        self.result_text = result_text
-                        logger.info("[MainWindow] Знайдено result_text через атрибут поточного віджету")
-                        return result_text
-                    except RuntimeError:
-                        # Віджет був видалений
-                        pass
+                try:
+                    # Перевіряємо, чи віджет все ще існує
+                    _ = result_text.placeholderText()
+                    self.result_text = result_text
+                    logger.info("[MainWindow] Знайдено result_text через атрибут поточного віджету")
+                    return result_text
+                except RuntimeError:
+                    # Віджет був видалений
+                    pass
             
             # Шукаємо result_text в поточному віджеті через findChildren
             for widget in current_widget.findChildren(QTextEdit):
@@ -923,55 +971,93 @@ class MainWindow(QMainWindow):
         ocr_settings = self._get_current_ocr_settings()
         ocr_settings.hide_progress()
         self.progress_bar.hide()
-        logger.info(f"[MainWindow] Отримано результат розпізнавання: {len(text)} символів")
-        
-        # Видалення тимчасових файлів після завершення обробки
+        logger.info(
+            "[MainWindow] Отримано результат розпізнавання: %s символів", len(text)
+        )
+
+        self._cleanup_after_recognition()
+        self._show_used_engine_if_needed(ocr_settings, engine_name)
+        self._update_statusbar_after_recognition(text)
+        self._display_recognition_result(text)
+
+    def _cleanup_after_recognition(self) -> None:
+        """Видалення тимчасових файлів після завершення обробки."""
         if self.current_mode == 'draw' and hasattr(self, 'canvas') and self.canvas:
             self.canvas.cleanup_temp_files()
-        elif self.current_mode == 'upload' and hasattr(self, '_temp_image_path'):
-            # Якщо використовувався тимчасовий файл для завантаженого зображення
+        elif (
+            self.current_mode == 'upload'
+            and hasattr(self, '_temp_image_path')
+            and self._temp_image_path
+        ):
             try:
                 if os.path.exists(self._temp_image_path):
                     os.remove(self._temp_image_path)
-                    logger.info(f"[MainWindow] Видалено тимчасовий файл: {self._temp_image_path}")
-            except Exception as e:
-                logger.warning(f"[MainWindow] Не вдалося видалити тимчасовий файл: {e}")
-        
-        # Показуємо використаний рушій в режимі малювання
+                    logger.info(
+                        "[MainWindow] Видалено тимчасовий файл: %s",
+                        self._temp_image_path,
+                    )
+            except Exception as error:
+                logger.warning(
+                    "[MainWindow] Не вдалося видалити тимчасовий файл: %s", error
+                )
+
+    def _show_used_engine_if_needed(self, ocr_settings, engine_name: str | None) -> None:
+        """Показуємо використаний рушій в режимі малювання."""
         if self.current_mode == 'draw' and engine_name:
             ocr_settings.show_used_engine(engine_name)
-        
+
+    def _update_statusbar_after_recognition(self, text: str) -> None:
+        """Оновлення статус-бару після завершення розпізнавання."""
         if hasattr(self, 'statusbar'):
             self.statusbar.showMessage(f"Готово ({len(text)} символів)", 3000)
-        
-        # Оновлюємо статус-бар
+
         try:
             from model.ocr_config import OCRConfig
+
             config = OCRConfig()
             llm_config = config.get_llm_config()
-            if llm_config.get('enabled', False):
-                self.statusbar.showMessage(f"Розпізнавання завершено з ШІ корекцією ({len(text)} символів)", 3000)
+            if llm_config.get("enabled", False):
+                self.statusbar.showMessage(
+                    f"Розпізнавання завершено з ШІ корекцією ({len(text)} символів)",
+                    3000,
+                )
             else:
-                self.statusbar.showMessage(f"Розпізнавання завершено ({len(text)} символів)", 3000)
+                self.statusbar.showMessage(
+                    f"Розпізнавання завершено ({len(text)} символів)", 3000
+                )
         except Exception:
-            self.statusbar.showMessage(f"Розпізнавання завершено ({len(text)} символів)", 3000)
-        
-        # Оновлюємо посилання на result_text перед виведенням
+            if hasattr(self, 'statusbar'):
+                self.statusbar.showMessage(
+                    f"Розпізнавання завершено ({len(text)} символів)", 3000
+                )
+
+    def _display_recognition_result(self, text: str) -> None:
+        """Відображення результату розпізнавання у відповідному полі або діалозі."""
         self._update_result_text_reference()
-        
         result_text = self._get_result_text()
         if result_text is not None:
             try:
                 result_text.setPlainText(text)
                 result_text.ensureCursorVisible()  # Прокручуємо до початку тексту
-                logger.info("[MainWindow] Результат виведено в поле результату")
-            except Exception as e:
-                logger.error(f"[MainWindow] Помилка при виведенні результату: {e}")
-                QMessageBox.warning(self, MSG_ERROR, f"Не вдалося вивести результат: {e}")
+                logger.info(
+                    "[MainWindow] Результат виведено в поле результату"
+                )
+            except Exception as error:
+                logger.error(
+                    "[MainWindow] Помилка при виведенні результату: %s", error
+                )
+                QMessageBox.warning(
+                    self, MSG_ERROR, f"Не вдалося вивести результат: {error}"
+                )
         else:
-            logger.error("[MainWindow] Не вдалося знайти result_text для відображення результату")
-            # Показуємо результат у діалоговому вікні як fallback
-            QMessageBox.information(self, "Результат розпізнавання", text[:500] + ("..." if len(text) > 500 else ""))
+            logger.error(
+                "[MainWindow] Не вдалося знайти result_text для відображення результату"
+            )
+            QMessageBox.information(
+                self,
+                "Результат розпізнавання",
+                text[:500] + ("..." if len(text) > 500 else ""),
+            )
         
     def on_recognition_error(self, error_msg: str):
         """Помилка розпізнавання"""

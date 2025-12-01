@@ -97,7 +97,7 @@ class CanvasWidget(QWidget):
         # Перевірка, чи є щось намальоване
         if self.is_empty():
             return None
-        
+            
         # Використовуємо NamedTemporaryFile для автоматичного видалення
         # Але зберігаємо файл відкритим до завершення обробки
         try:

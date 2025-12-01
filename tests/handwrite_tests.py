@@ -22,7 +22,8 @@ class TestImagePreprocessor:
         preprocessor = ImagePreprocessor()
         
         # Створення тестового зображення з шумом
-        image = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+        rng = np.random.default_rng(42)
+        image = rng.integers(0, 255, (100, 100), dtype=np.uint8)
         
         result = preprocessor.denoise(image)
         
@@ -34,7 +35,8 @@ class TestImagePreprocessor:
         preprocessor = ImagePreprocessor()
         
         # Створення тестового зображення
-        image = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+        rng = np.random.default_rng(123)
+        image = rng.integers(0, 255, (100, 100), dtype=np.uint8)
         
         result = preprocessor.binarize(image)
         
@@ -48,7 +50,8 @@ class TestImagePreprocessor:
         preprocessor = ImagePreprocessor()
         
         # Велике зображення
-        image = np.random.randint(0, 255, (3000, 3000), dtype=np.uint8)
+        rng = np.random.default_rng(999)
+        image = rng.integers(0, 255, (3000, 3000), dtype=np.uint8)
         
         result = preprocessor.resize_image(image, max_width=2000, max_height=2000)
         
@@ -104,7 +107,10 @@ def test_imports():
         from app.model.handwrite_preprocess import ImagePreprocessor
         from app.model.handwrite_export import TextExporter
         from app.model.unified_ocr_adapter import UnifiedOCRAdapter
-        assert True
+        # Якщо імпорти не викликають помилку, тест вважається успішним
+        assert ImagePreprocessor is not None
+        assert TextExporter is not None
+        assert UnifiedOCRAdapter is not None
     except ImportError as e:
         pytest.fail(f"Помилка імпорту: {e}")
 

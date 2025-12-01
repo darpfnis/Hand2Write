@@ -14,6 +14,9 @@ from .word_segmenter import WordSegmenter
 
 logger = logging.getLogger(__name__)
 
+# Константа для маркування початку розпізнавання
+OCR_START_MESSAGE = "[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ ====="
+
 # Глобальний кеш стратегій - всі адаптери використовують ті самі екземпляри
 # Це забезпечує збереження моделей в пам'яті між викликами
 _GLOBAL_STRATEGIES: Dict[str, Optional[OCRStrategy]] = {}
@@ -259,7 +262,7 @@ class UnifiedOCRAdapter:
             
             # Логуємо, який рушій використовується
             strategy_name = self._current_strategy.get_name()
-            logger.info("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
+            logger.info(OCR_START_MESSAGE)
             logger.info(f"[OCR] Використовується рушій: {strategy_name}")
             logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
             logger.info(f"[OCR] Мова розпізнавання: {language}")
@@ -268,11 +271,11 @@ class UnifiedOCRAdapter:
             # Розпізнавання
             import time
             recognize_start = time.time()
-            print("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====", flush=True)
+            print(OCR_START_MESSAGE, flush=True)
             print(f"[OCR] Використовується рушій: {strategy_name}", flush=True)
             print(f"[OCR] Запитаний рушій: {self.engine_name}", flush=True)
             print(f"[OCR] Мова: {language}", flush=True)
-            logger.info("[OCR] ===== ПОЧАТОК РОЗПІЗНАВАННЯ =====")
+            logger.info(OCR_START_MESSAGE)
             logger.info(f"[OCR] Використовується рушій: {strategy_name}")
             logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
             logger.info(f"[OCR] Мова розпізнавання: {language}")

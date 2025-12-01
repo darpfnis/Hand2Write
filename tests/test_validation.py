@@ -22,7 +22,7 @@ class TestImageValidation:
         preprocessor = OptimizedPreprocessor()
         
         with pytest.raises(ValueError, match="не може бути None"):
-            preprocessor.process(None)
+            preprocessor.process(None)  # type: ignore[arg-type]
     
     def test_preprocessor_validates_empty_image(self):
         """Тест валідації порожнього зображення"""
@@ -46,7 +46,8 @@ class TestImageValidation:
         preprocessor = OptimizedPreprocessor()
         
         # Валідне зображення
-        valid_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+        rng = np.random.default_rng(7)
+        valid_image = rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)
         result = preprocessor.process(valid_image)
         
         assert result is not None
