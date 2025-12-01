@@ -7,6 +7,11 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from model.ocr_manager import OCREngine, OCRLanguage, ENGINE_METADATA, OCRManager, OCREngineMetadata
 
+# Константи для назв мов
+LANG_UKRAINIAN = "Українська"
+LANG_ENGLISH = "Англійська"
+LANG_BOTH = "Обидві"
+
 
 class OCRSettingsPanel(QGroupBox):
     """Панель налаштувань OCR з динамічними підказками"""
@@ -44,7 +49,7 @@ class OCRSettingsPanel(QGroupBox):
         lang_layout.addWidget(QLabel("Мова тексту:"))
         
         self.language_combo = QComboBox()
-        self.language_combo.addItems(["Українська", "Англійська", "Обидві"])
+        self.language_combo.addItems([LANG_UKRAINIAN, LANG_ENGLISH, LANG_BOTH])
         self.language_combo.setMinimumWidth(150)
         self.language_combo.setToolTip(
             "Оберіть мову тексту для кращого розпізнавання:\n"

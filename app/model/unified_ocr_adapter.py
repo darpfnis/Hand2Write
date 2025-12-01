@@ -373,7 +373,6 @@ class UnifiedOCRAdapter:
                         return fallback_result
                 except Exception as fallback_error:
                     logger.error(f"[OCR] ✗ Fallback на Tesseract також не вдався: {fallback_error}")
-                    pass
             
             # Якщо все не вдалося, повертаємо порожній рядок
             logger.error(f"[OCR] ✗ Всі спроби розпізнавання не вдалися")

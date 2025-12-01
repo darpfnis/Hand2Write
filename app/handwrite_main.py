@@ -21,7 +21,7 @@ try:
     os.environ['PADDLE_PDX_CACHE_HOME'] = paddleocr_models_path
     os.environ['PADDLEX_HOME'] = paddleocr_models_path
     os.environ['PADDLE_HOME'] = paddleocr_models_path
-except (OSError, PermissionError, Exception):
+except (OSError, PermissionError):
     paddlex_home = r'D:\paddlex_models'
     try:
         os.makedirs(paddlex_home, exist_ok=True)

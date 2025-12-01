@@ -111,7 +111,6 @@ class ImagePreprocessor:
         # Вибираємо той, який має кращий контраст (більше білих пікселів на темному фоні)
         # Для рукописного тексту адаптивна часто краща
         adaptive_contrast = np.sum(binary_adaptive == 255) / binary_adaptive.size
-        otsu_contrast = np.sum(binary_otsu == 255) / binary_otsu.size
         
         # Якщо адаптивна дає розумний баланс (20-80% білих пікселів), використовуємо її
         if 0.2 <= adaptive_contrast <= 0.8:
@@ -130,7 +129,7 @@ class ImagePreprocessor:
             вирівняне зображення
         """
         # Визначення кута нахилу
-        coords = np.column_stack(np.where(image > 0))
+        coords = np.column_stack(np.nonzero(image > 0))
         
         if len(coords) < 5:
             return image

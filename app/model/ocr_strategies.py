@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 # Глобальне кешування статусу доступності рушіїв
 _ENGINE_AVAILABILITY_CACHE = {}
 
+# Константи для мов
+LANG_ENG_UKR = 'eng+ukr'
+LANG_UKR_ENG = 'ukr+eng'
+
 
 class OCRStrategy(ABC):
     """Абстрактний базовий клас для OCR стратегій"""
@@ -131,8 +135,8 @@ class TesseractStrategy(OCRStrategy):
             lang_map = {
                 'eng': 'eng', 
                 'ukr': 'ukr', 
-                'eng+ukr': 'eng+ukr', 
-                'ukr+eng': 'ukr+eng',
+                LANG_ENG_UKR: LANG_ENG_UKR,
+                LANG_UKR_ENG: LANG_UKR_ENG,
             }
             tesseract_lang = lang_map.get(language, 'eng')
             
@@ -204,7 +208,7 @@ class EasyOCRStrategy(OCRStrategy):
             time.sleep(0.1)
             
             # Перевірка PyTorch
-            is_available, version, error = check_pytorch_availability()
+            is_available, version, _ = check_pytorch_availability()
             
             if is_available:
                 self._available = True
@@ -214,7 +218,7 @@ class EasyOCRStrategy(OCRStrategy):
                 # Логуємо тільки один раз, зменшуємо рівень до INFO
                 if cache_key not in _ENGINE_AVAILABILITY_CACHE:
                     # Спрощене повідомлення - детальна інформація в FINAL_SOLUTION_PYTORCH.md
-                    logger.info(f"EasyOCR не доступний через проблеми з PyTorch DLL. Використовується Tesseract.")
+                    logger.info("EasyOCR не доступний через проблеми з PyTorch DLL. Використовується Tesseract.")
                 self._available = False
                 _ENGINE_AVAILABILITY_CACHE[cache_key] = False
         except ImportError:
@@ -245,8 +249,8 @@ class EasyOCRStrategy(OCRStrategy):
         lang_map = {
             'eng': ['en'],
             'ukr': ['uk'],  # Тільки українська для кращого розпізнавання
-            'eng+ukr': ['en', 'uk'],
-            'ukr+eng': ['uk', 'en']
+            LANG_ENG_UKR: ['en', 'uk'],
+            LANG_UKR_ENG: ['uk', 'en']
         }
         easyocr_langs = lang_map.get(language, ['en'])
         lang_key = ','.join(easyocr_langs)  # Використовуємо як ключ кешу
@@ -256,7 +260,7 @@ class EasyOCRStrategy(OCRStrategy):
                 # Спочатку перевіряємо PyTorch
                 from .pytorch_helper import setup_pytorch_path, check_pytorch_availability
                 setup_pytorch_path()
-                is_available, version, error = check_pytorch_availability()
+                is_available, version, _ = check_pytorch_availability()
                 
                 if not is_available:
                     raise RuntimeError(f"PyTorch не доступний: {error}")
@@ -267,7 +271,7 @@ class EasyOCRStrategy(OCRStrategy):
                 logger.info(f"[EasyOCR] Reader створено для мов: {easyocr_langs}")
             except ImportError as e:
                 logger.error(f"EasyOCR не встановлено: {e}")
-                raise RuntimeError(f"EasyOCR не встановлено. Встановіть: pip install easyocr")
+                raise RuntimeError("EasyOCR не встановлено. Встановіть: pip install easyocr")
             except Exception as e:
                 error_msg = str(e)
                 if "DLL" in error_msg or "1114" in error_msg:
@@ -308,22 +312,22 @@ class EasyOCRStrategy(OCRStrategy):
             if len(image.shape) == 2:
                 # Grayscale -> RGB
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-                logger.info(f"[EasyOCR] Конвертовано grayscale -> RGB")
+                logger.info("[EasyOCR] Конвертовано grayscale -> RGB")
             elif len(image.shape) == 3:
                 if image.shape[2] == 1:
                     # 1 канал -> RGB
                     image = cv2.cvtColor(image[:, :, 0], cv2.COLOR_GRAY2RGB)
-                    logger.info(f"[EasyOCR] Конвертовано 1 канал -> RGB")
+                    logger.info("[EasyOCR] Конвертовано 1 канал -> RGB")
                 elif image.shape[2] == 3:
                     # Вже 3 канали, переконуємося що це RGB (EasyOCR очікує RGB)
                     # Якщо це BGR, конвертуємо в RGB
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    logger.info(f"[EasyOCR] Конвертовано BGR -> RGB")
+                    logger.info("[EasyOCR] Конвертовано BGR -> RGB")
                 elif image.shape[2] == 4:
                     # RGBA -> RGB
                     image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-                    logger.info(f"[EasyOCR] Конвертовано RGBA -> RGB")
-            logger.info(f"[EasyOCR] Використовується оригінальне зображення з мінімальною обробкою")
+                    logger.info("[EasyOCR] Конвертовано RGBA -> RGB")
+            logger.info("[EasyOCR] Використовується оригінальне зображення з мінімальною обробкою")
             
             # Мапінг мов
             # Для української використовуємо тільки 'uk' для кращого розпізнавання кирилиці
@@ -407,7 +411,7 @@ class EasyOCRStrategy(OCRStrategy):
                     min_confidence = min(confidences)
                     logger.info(f"[EasyOCR] Якість розпізнавання: середня впевненість={avg_confidence:.3f}, мінімальна={min_confidence:.3f}")
                     if min_confidence < 0.3:
-                        logger.warning(f"[EasyOCR] ⚠️ Увага: є результати з дуже низькою впевненістю (< 0.3) - можливі помилки розпізнавання")
+                        logger.warning("[EasyOCR] ⚠️ Увага: є результати з дуже низькою впевненістю (< 0.3) - можливі помилки розпізнавання")
             
             text = ' '.join([txt for _, txt, _ in filtered_result])
             return text.strip()
@@ -448,13 +452,13 @@ class PaddleOCRStrategy(OCRStrategy):
             time.sleep(0.1)
             
             # Перевірка PyTorch
-            pytorch_available, pytorch_version, pytorch_error = check_pytorch_availability()
+            pytorch_available, pytorch_version, _ = check_pytorch_availability()
             
             if not pytorch_available:
                 # Логуємо тільки один раз, зменшуємо рівень до INFO
                 if cache_key not in _ENGINE_AVAILABILITY_CACHE:
                     # Спрощене повідомлення - детальна інформація в FINAL_SOLUTION_PYTORCH.md
-                    logger.info(f"PaddleOCR не доступний через проблеми з PyTorch DLL. Використовується Tesseract.")
+                    logger.info("PaddleOCR не доступний через проблеми з PyTorch DLL. Використовується Tesseract.")
                 self._available = False
                 _ENGINE_AVAILABILITY_CACHE[cache_key] = False
                 return
@@ -463,7 +467,7 @@ class PaddleOCRStrategy(OCRStrategy):
             try:
                 # Тільки перевіряємо, чи можна імпортувати paddle
                 # НЕ створюємо PaddleOCR екземпляр тут, щоб не блокувати програму
-                logger.info(f"[PaddleOCR] Спробуємо імпортувати paddle...")
+                logger.info("[PaddleOCR] Спробуємо імпортувати paddle...")
                 import time
                 import_start = time.time()
                 import paddle
@@ -472,7 +476,7 @@ class PaddleOCRStrategy(OCRStrategy):
                 
                 # НЕ імпортуємо paddleocr тут, бо це може викликати створення моделей
                 # Перевірку paddleocr зробимо тільки при створенні екземпляра
-                logger.info(f"[PaddleOCR] paddle доступний, paddleocr буде перевірено при створенні екземпляра")
+                logger.info("[PaddleOCR] paddle доступний, paddleocr буде перевірено при створенні екземпляра")
                 
                 self._available = True
                 _ENGINE_AVAILABILITY_CACHE[cache_key] = True
@@ -520,8 +524,8 @@ class PaddleOCRStrategy(OCRStrategy):
         lang_map = {
             'eng': 'en',
             'ukr': 'uk',  # Спробуємо українську, якщо не підтримується - fallback на 'ru'
-            'eng+ukr': 'en',
-            'ukr+eng': 'en'
+            LANG_ENG_UKR: 'en',
+            LANG_UKR_ENG: 'en'
         }
         paddle_lang = lang_map.get(language, 'en')
         
@@ -552,11 +556,11 @@ class PaddleOCRStrategy(OCRStrategy):
             import time
             
             # Перевіряємо, яка версія PaddleOCR використовується
-            logger.info(f"[PaddleOCR] Перевірка доступності paddle та paddleocr...")
+            logger.info("[PaddleOCR] Перевірка доступності paddle та paddleocr...")
             try:
                 # Спочатку перевіряємо paddle (це може зайняти час, але необхідно)
                 import paddle
-                logger.info(f"[PaddleOCR] paddle успішно імпортовано")
+                logger.info("[PaddleOCR] paddle успішно імпортовано")
             except ImportError as e:
                 logger.error(f"[PaddleOCR] paddle не встановлено: {e}")
                 raise RuntimeError(f"PaddlePaddle не встановлено: {e}")
@@ -596,7 +600,7 @@ class PaddleOCRStrategy(OCRStrategy):
             # Використовуємо тільки підтримувані параметри
             try:
                 logger.info(f"[PaddleOCR] Виклик PaddleOCR(lang='{paddle_lang}', use_angle_cls=False)...")
-                logger.info(f"[PaddleOCR] Це може зайняти кілька хвилин при першому запуску...")
+                logger.info("[PaddleOCR] Це може зайняти кілька хвилин при першому запуску...")
                 instance = PaddleOCR(lang=paddle_lang, use_angle_cls=False)
                 elapsed_time = time.time() - start_time
                 logger.info(f"[PaddleOCR] ✓ Екземпляр успішно створено за {elapsed_time:.2f} секунд ({elapsed_time/60:.1f} хвилин)")
@@ -625,7 +629,7 @@ class PaddleOCRStrategy(OCRStrategy):
             
             # Перевіряємо, чи екземпляр працює
             try:
-                logger.info(f"[PaddleOCR] Перевірка екземпляра...")
+                logger.info("[PaddleOCR] Перевірка екземпляра...")
                 logger.info(f"[PaddleOCR] Тип: {type(instance).__name__}")
                 logger.info(f"[PaddleOCR] Має метод ocr: {hasattr(instance, 'ocr')}")
                 logger.info(f"[PaddleOCR] Має метод predict: {hasattr(instance, 'predict')}")
@@ -680,7 +684,7 @@ class PaddleOCRStrategy(OCRStrategy):
             logger.info("[PaddleOCR] ===== ВИКЛИК recognize() =====")
             print(f"[PaddleOCR] self._available = {self._available}", flush=True)
             logger.info(f"[PaddleOCR] self._available = {self._available}")
-        except:
+        except Exception:
             pass
         
         if not self._available:
@@ -693,8 +697,8 @@ class PaddleOCRStrategy(OCRStrategy):
             import cv2
             import time
             
-            print(f"[PaddleOCR] ===== ПОЧАТОК розпізнавання =====")
-            logger.info(f"[PaddleOCR] ===== ПОЧАТОК розпізнавання =====")
+            print("[PaddleOCR] ===== ПОЧАТОК розпізнавання =====")
+            logger.info("[PaddleOCR] ===== ПОЧАТОК розпізнавання =====")
             print(f"[PaddleOCR] Мова: {language}, розмір зображення: {image.shape}")
             logger.info(f"[PaddleOCR] Мова: {language}, розмір зображення: {image.shape}")
             print(f"[PaddleOCR] Тип зображення: {type(image)}, dtype: {image.dtype if hasattr(image, 'dtype') else 'N/A'}")
@@ -703,7 +707,7 @@ class PaddleOCRStrategy(OCRStrategy):
             recognize_start = time.time()
             print(f"[PaddleOCR] Отримання екземпляра для мови: {language}...")
             ocr_instance = self._get_instance(language)
-            print(f"[PaddleOCR] Екземпляр отримано")
+            print("[PaddleOCR] Екземпляр отримано")
             get_instance_time = time.time() - recognize_start
             logger.info(f"[PaddleOCR] Екземпляр отримано за {get_instance_time:.2f} сек")
             
@@ -732,20 +736,20 @@ class PaddleOCRStrategy(OCRStrategy):
             if len(image.shape) == 2:
                 # Grayscale -> BGR
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-                logger.info(f"[PaddleOCR] Конвертовано grayscale -> BGR")
+                logger.info("[PaddleOCR] Конвертовано grayscale -> BGR")
             elif len(image.shape) == 3:
                 if image.shape[2] == 1:
                     # 1 канал -> BGR
                     image = cv2.cvtColor(image[:, :, 0], cv2.COLOR_GRAY2BGR)
-                    logger.info(f"[PaddleOCR] Конвертовано 1 канал -> BGR")
+                    logger.info("[PaddleOCR] Конвертовано 1 канал -> BGR")
                 elif image.shape[2] == 3:
                     # Вже 3 канали, переконуємося що це BGR (не RGB)
                     # PaddleOCR очікує BGR формат
-                    logger.info(f"[PaddleOCR] Зображення вже має 3 канали (BGR)")
+                    logger.info("[PaddleOCR] Зображення вже має 3 канали (BGR)")
                 elif image.shape[2] == 4:
                     # RGBA -> BGR
                     image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-                    logger.info(f"[PaddleOCR] Конвертовано RGBA -> BGR")
+                    logger.info("[PaddleOCR] Конвертовано RGBA -> BGR")
             
             # Переконуємося, що значення в правильному діапазоні
             image = np.clip(image, 0, 255).astype(np.uint8)
@@ -757,13 +761,13 @@ class PaddleOCRStrategy(OCRStrategy):
             results = None
             ocr_start = time.time()
             try:
-                print(f"[PaddleOCR] Виклик методу розпізнавання...")
-                logger.info(f"[PaddleOCR] Виклик методу розпізнавання...")
+                print("[PaddleOCR] Виклик методу розпізнавання...")
+                logger.info("[PaddleOCR] Виклик методу розпізнавання...")
                 
                 # Спочатку пробуємо стандартний метод ocr() - він завжди повертає однаковий формат
                 if hasattr(ocr_instance, 'ocr'):
-                    print(f"[PaddleOCR] Використовується стандартний метод ocr()")
-                    logger.info(f"[PaddleOCR] Використовується стандартний метод ocr()")
+                    print("[PaddleOCR] Використовується стандартний метод ocr()")
+                    logger.info("[PaddleOCR] Використовується стандартний метод ocr()")
                     try:
                         results = ocr_instance.ocr(image, cls=False)
                         ocr_time = time.time() - ocr_start
@@ -771,16 +775,16 @@ class PaddleOCRStrategy(OCRStrategy):
                         logger.info(f"[PaddleOCR] ✓ Метод ocr() виконано за {ocr_time:.2f} сек")
                     except TypeError:
                         # Якщо cls параметр не підтримується, викликаємо без нього
-                        print(f"[PaddleOCR] cls параметр не підтримується, викликаємо без нього")
-                        logger.info(f"[PaddleOCR] cls параметр не підтримується, викликаємо без нього")
+                        print("[PaddleOCR] cls параметр не підтримується, викликаємо без нього")
+                        logger.info("[PaddleOCR] cls параметр не підтримується, викликаємо без нього")
                         results = ocr_instance.ocr(image)
                         ocr_time = time.time() - ocr_start
                         print(f"[PaddleOCR] ✓ Метод ocr() виконано за {ocr_time:.2f} сек")
                         logger.info(f"[PaddleOCR] ✓ Метод ocr() виконано за {ocr_time:.2f} сек")
                 # Якщо ocr() недоступний, пробуємо predict()
                 elif hasattr(ocr_instance, 'predict'):
-                    print(f"[PaddleOCR] ocr() недоступний, використовується метод predict()")
-                    logger.warning(f"[PaddleOCR] ocr() недоступний, використовується метод predict()")
+                    print("[PaddleOCR] ocr() недоступний, використовується метод predict()")
+                    logger.warning("[PaddleOCR] ocr() недоступний, використовується метод predict()")
                     try:
                         # Використовуємо predict() з параметрами для кращого розпізнавання рукописного тексту
                         results = ocr_instance.predict(
@@ -817,8 +821,8 @@ class PaddleOCRStrategy(OCRStrategy):
                 raise
             
             # Обробка результату
-            print(f"[PaddleOCR] ===== ОБРОБКА РЕЗУЛЬТАТУ =====", flush=True)
-            logger.info(f"[PaddleOCR] ===== ОБРОБКА РЕЗУЛЬТАТУ =====")
+            print("[PaddleOCR] ===== ОБРОБКА РЕЗУЛЬТАТУ =====", flush=True)
+            logger.info("[PaddleOCR] ===== ОБРОБКА РЕЗУЛЬТАТУ =====")
             print(f"[PaddleOCR] Тип результату: {type(results)}", flush=True)
             logger.info(f"[PaddleOCR] Тип результату: {type(results)}")
             # Не виводимо весь результат, бо він може бути дуже великим
@@ -833,8 +837,8 @@ class PaddleOCRStrategy(OCRStrategy):
                     print(f"[PaddleOCR] Результат: {str(results)[:200]}...", flush=True)
                     logger.info(f"[PaddleOCR] Результат: {str(results)[:200]}...")
             else:
-                print(f"[PaddleOCR] Результат: None", flush=True)
-                logger.info(f"[PaddleOCR] Результат: None")
+                print("[PaddleOCR] Результат: None", flush=True)
+                logger.info("[PaddleOCR] Результат: None")
             print(f"[PaddleOCR] Результат is None: {results is None}", flush=True)
             logger.info(f"[PaddleOCR] Результат is None: {results is None}")
             if results is not None:
@@ -859,8 +863,8 @@ class PaddleOCRStrategy(OCRStrategy):
                 
                 # Спробуємо predict() як fallback, якщо доступний
                 if hasattr(ocr_instance, 'predict'):
-                    print(f"[PaddleOCR] Спроба використати predict() як fallback...")
-                    logger.info(f"[PaddleOCR] Спроба використати predict() як fallback...")
+                    print("[PaddleOCR] Спроба використати predict() як fallback...")
+                    logger.info("[PaddleOCR] Спроба використати predict() як fallback...")
                     try:
                         fallback_start = time.time()
                         results = ocr_instance.predict(image)
@@ -870,8 +874,8 @@ class PaddleOCRStrategy(OCRStrategy):
                         
                         # Перевіряємо, чи fallback дав результат
                         if results is None:
-                            print(f"[PaddleOCR] ⚠️ predict() також повернув None")
-                            logger.warning(f"[PaddleOCR] ⚠️ predict() також повернув None")
+                            print("[PaddleOCR] ⚠️ predict() також повернув None")
+                            logger.warning("[PaddleOCR] ⚠️ predict() також повернув None")
                             return ""
                     except Exception as fallback_error:
                         print(f"[PaddleOCR] ✗ predict() fallback не вдався: {fallback_error}")
@@ -892,8 +896,8 @@ class PaddleOCRStrategy(OCRStrategy):
                 
                 # Спробуємо predict() як fallback
                 if hasattr(ocr_instance, 'predict'):
-                    print(f"[PaddleOCR] Спроба використати predict() як fallback для порожнього списку...", flush=True)
-                    logger.info(f"[PaddleOCR] Спроба використати predict() як fallback для порожнього списку...")
+                    print("[PaddleOCR] Спроба використати predict() як fallback для порожнього списку...", flush=True)
+                    logger.info("[PaddleOCR] Спроба використати predict() як fallback для порожнього списку...")
                     try:
                         fallback_start = time.time()
                         results = ocr_instance.predict(image)
@@ -903,12 +907,12 @@ class PaddleOCRStrategy(OCRStrategy):
                         
                         # Перевіряємо, чи fallback дав результат
                         if results is None or (isinstance(results, (list, tuple)) and len(results) == 0):
-                            print(f"[PaddleOCR] ⚠️ predict() також повернув порожній результат", flush=True)
-                            logger.warning(f"[PaddleOCR] ⚠️ predict() також повернув порожній результат")
+                            print("[PaddleOCR] ⚠️ predict() також повернув порожній результат", flush=True)
+                            logger.warning("[PaddleOCR] ⚠️ predict() також повернув порожній результат")
                             return ""
                         # Якщо predict() дав результат, продовжуємо обробку
-                        print(f"[PaddleOCR] predict() дав результат, продовжуємо обробку...", flush=True)
-                        logger.info(f"[PaddleOCR] predict() дав результат, продовжуємо обробку...")
+                        print("[PaddleOCR] predict() дав результат, продовжуємо обробку...", flush=True)
+                        logger.info("[PaddleOCR] predict() дав результат, продовжуємо обробку...")
                     except Exception as fallback_error:
                         print(f"[PaddleOCR] ✗ predict() fallback не вдався: {fallback_error}", flush=True)
                         logger.warning(f"[PaddleOCR] ✗ predict() fallback не вдався: {fallback_error}")
@@ -924,8 +928,8 @@ class PaddleOCRStrategy(OCRStrategy):
             text = ""
             
             # Детальне логування структури результату
-            print(f"[PaddleOCR] Детальна інформація про результат:")
-            logger.info(f"[PaddleOCR] Детальна інформація про результат:")
+            print("[PaddleOCR] Детальна інформація про результат:")
+            logger.info("[PaddleOCR] Детальна інформація про результат:")
             print(f"  - Тип: {type(results)}")
             logger.info(f"  - Тип: {type(results)}")
             if isinstance(results, (list, tuple)):

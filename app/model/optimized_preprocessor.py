@@ -178,7 +178,6 @@ class OptimizedPreprocessor:
         
         # Вибираємо кращий варіант
         adaptive_ratio = np.sum(binary_adaptive == 255) / binary_adaptive.size
-        otsu_ratio = np.sum(binary_otsu == 255) / binary_otsu.size
         
         # Адаптивна краща, якщо має розумний баланс (20-80%)
         if 0.2 <= adaptive_ratio <= 0.8:
@@ -203,7 +202,7 @@ class OptimizedPreprocessor:
         Вирівнювання нахилу тексту
         """
         # Знаходимо координати ненульових пікселів
-        coords = np.column_stack(np.where(image > 0))
+        coords = np.column_stack(np.nonzero(image > 0))
         
         if len(coords) < 5:
             return image

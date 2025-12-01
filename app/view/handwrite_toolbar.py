@@ -71,7 +71,7 @@ class HandwriteToolBar(QToolBar):
             # Знаходимо та видаляємо action для кнопки завантаження
             # Використовуємо widgetForAction() для отримання віджету з action
             load_action = None
-            for action in list(self.actions()):
+            for action in self.actions():
                 try:
                     # Використовуємо widgetForAction() для QToolBar
                     widget = self.widgetForAction(action)
@@ -107,12 +107,12 @@ class HandwriteToolBar(QToolBar):
             if self.load_separator_before:
                 try:
                     self.removeAction(self.load_separator_before)
-                except:
+                except Exception:
                     pass
             if self.load_separator_after:
                 try:
                     self.removeAction(self.load_separator_after)
-                except:
+                except Exception:
                     pass
             
             self.load_separator_before = None
@@ -120,7 +120,7 @@ class HandwriteToolBar(QToolBar):
             self.load_btn_added = False
             
             # Додаткова перевірка - переконаємося, що кнопка дійсно видалена
-            for action in list(self.actions()):
+            for action in self.actions():
                 try:
                     # Використовуємо widgetForAction() для QToolBar
                     widget = self.widgetForAction(action)
@@ -194,17 +194,16 @@ class HandwriteToolBar(QToolBar):
                     self.addWidget(self.load_btn)
                     self.load_separator_after = self.addSeparator()
                     self.load_btn_added = True
-            except (RuntimeError, AttributeError) as e:
+            except (RuntimeError, AttributeError):
                 # Якщо не вдалося вставити, просто додаємо в кінець
                 try:
                     self.load_separator_before = self.addSeparator()
                     self.addWidget(self.load_btn)
                     self.load_separator_after = self.addSeparator()
                     self.load_btn_added = True
-                except:
+                except Exception:
                     pass
     
     def hide_toolbar(self):
         """Приховати toolbar (для головного меню)"""
         self.setVisible(False)
-

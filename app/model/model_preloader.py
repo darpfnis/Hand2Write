@@ -127,7 +127,7 @@ class ModelPreloaderThread(QThread):
                     # Викликаємо _get_reader для попереднього завантаження моделей
                     # Це створює easyocr.Reader, який завантажує моделі в пам'ять
                     if hasattr(strategy, '_get_reader'):
-                        reader = strategy._get_reader(lang)  # type: ignore
+                        strategy._get_reader(lang)  # type: ignore
                         logger.info(f"[Preloader] ✓ EasyOCR Reader для '{lang}' готовий (моделі в пам'яті)")
                     else:
                         logger.warning(f"[Preloader] Стратегія {type(strategy)} не має методу _get_reader")
@@ -164,7 +164,7 @@ class ModelPreloaderThread(QThread):
                     # Викликаємо _get_instance для попереднього завантаження моделей
                     # Це створює PaddleOCR екземпляр, який завантажує моделі в пам'ять
                     if hasattr(strategy, '_get_instance'):
-                        instance = strategy._get_instance(lang)  # type: ignore
+                        strategy._get_instance(lang)  # type: ignore
                         logger.info(f"[Preloader] ✓ PaddleOCR екземпляр для '{lang}' готовий (моделі в пам'яті)")
                     else:
                         logger.warning(f"[Preloader] Стратегія {type(strategy)} не має методу _get_instance")

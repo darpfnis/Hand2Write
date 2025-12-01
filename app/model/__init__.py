@@ -7,7 +7,7 @@ from .handwrite_export import TextExporter
 
 __all__ = [
     'UnifiedOCRAdapter',
-    'ImagePreprocessor', 
+    'ImagePreprocessor',
     'TextExporter'
 ]
 

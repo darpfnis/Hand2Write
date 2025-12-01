@@ -53,13 +53,12 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
         # Це найнадійніший спосіб для завантаження DLL з правильним пошуком залежностей
         try:
             kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-            LoadLibraryExW = kernel32.LoadLibraryExW
-            LoadLibraryExW.argtypes = [wintypes.LPCWSTR, wintypes.HANDLE, wintypes.DWORD]
-            LoadLibraryExW.restype = wintypes.HMODULE
+            load_library_ex_w = kernel32.LoadLibraryExW
+            load_library_ex_w.argtypes = [wintypes.LPCWSTR, wintypes.HANDLE, wintypes.DWORD]
+            load_library_ex_w.restype = wintypes.HMODULE
             
             # Константи для LoadLibraryEx
             LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
-            DONT_RESOLVE_DLL_REFERENCES = 0x00000001
             
             # Список критичних DLL PyTorch, які потрібно завантажити в правильному порядку
             critical_dlls = [
@@ -75,7 +74,7 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
                         # Завантажуємо DLL через LoadLibraryEx з LOAD_WITH_ALTERED_SEARCH_PATH
                         # Це дозволяє знаходити залежності в тій самій папці
                         dll_path_str = str(dll_path.absolute())
-                        hmodule = LoadLibraryExW(dll_path_str, None, LOAD_WITH_ALTERED_SEARCH_PATH)
+                        hmodule = load_library_ex_w(dll_path_str, None, LOAD_WITH_ALTERED_SEARCH_PATH)
                         if hmodule:
                             loaded_dlls.append(dll_name)
                             logger.info(f"✓ Завантажено {dll_name} через LoadLibraryEx")
@@ -294,7 +293,7 @@ def diagnose_pytorch_environment() -> Dict[str, Any]:
         pass
     
     # Перевірка роботи
-    is_available, version, error = check_pytorch_availability()
+    is_available, _, error = check_pytorch_availability()
     diagnosis['pytorch_working'] = is_available
     if error:
         diagnosis['error'] = error

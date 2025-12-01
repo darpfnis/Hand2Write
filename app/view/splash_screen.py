@@ -8,6 +8,9 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QPainter, QFont, QColor, QLinearGradient
 from pathlib import Path
 
+# Константа для шрифту
+DEFAULT_FONT = "Segoe UI"
+
 
 class SplashScreen(QSplashScreen):
     """Вікно завантаження програми"""
@@ -39,7 +42,7 @@ class SplashScreen(QSplashScreen):
         painter.drawRoundedRect(15, 15, 770, 470, 10, 10)
         
         # Заголовок - розбиваємо на дві частини для кращого контролю
-        title_font = QFont("Segoe UI", 32, QFont.Weight.Bold)
+        title_font = QFont(DEFAULT_FONT, 32, QFont.Weight.Bold)
         painter.setFont(title_font)
         painter.setPen(QColor("#1976D2"))
         
@@ -62,7 +65,7 @@ class SplashScreen(QSplashScreen):
         painter.drawLine(250, 235, 550, 235)
         
         # Підзаголовок
-        subtitle_font = QFont("Segoe UI", 14)
+        subtitle_font = QFont(DEFAULT_FONT, 14)
         painter.setFont(subtitle_font)
         painter.setPen(QColor("#546E7A"))
         painter.drawText(
@@ -72,7 +75,7 @@ class SplashScreen(QSplashScreen):
         )
         
         # Індикатор завантаження
-        loading_font = QFont("Segoe UI", 12)
+        loading_font = QFont(DEFAULT_FONT, 12)
         painter.setFont(loading_font)
         painter.setPen(QColor("#42A5F5"))
         painter.drawText(
@@ -82,7 +85,7 @@ class SplashScreen(QSplashScreen):
         )
         
         # Повідомлення внизу
-        progress_font = QFont("Segoe UI", 10)
+        progress_font = QFont(DEFAULT_FONT, 10)
         painter.setFont(progress_font)
         painter.setPen(QColor("#90A4AE"))
         painter.drawText(
@@ -109,7 +112,7 @@ class SplashScreen(QSplashScreen):
                 x = (screen_geometry.width() - pixmap.width()) // 2
                 y = (screen_geometry.height() - pixmap.height()) // 2
                 self.move(x, y)
-        except:
+        except Exception:
             pass
         
         # Зберігаємо початковий pixmap для оновлення
@@ -134,7 +137,7 @@ class SplashScreen(QSplashScreen):
         painter.fillRect(50, 330, 700, 40, gradient)
         
         # Малюємо нове повідомлення
-        loading_font = QFont("Segoe UI", 12)
+        loading_font = QFont(DEFAULT_FONT, 12)
         painter.setFont(loading_font)
         painter.setPen(QColor("#42A5F5"))
         painter.drawText(

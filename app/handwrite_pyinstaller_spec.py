@@ -77,33 +77,6 @@ exe = EXE(  # type: ignore
 )
 
 # Для створення окремої папки з залежностями замість одного файлу,
-# розкоментуйте код нижче та закоментуйте блок EXE вище:
-
-# exe = EXE(
-#     pyz,
-#     a.scripts,
-#     [],
-#     exclude_binaries=True,
-#     name='Handwrite2Print',
-#     debug=False,
-#     bootloader_ignore_signals=False,
-#     strip=False,
-#     upx=True,
-#     console=False,
-#     disable_windowed_traceback=False,
-#     target_arch=None,
-#     codesign_identity=None,
-#     entitlements_file=None,
-#     icon='resources/icon.ico'
-# )
-
-# coll = COLLECT(
-#     exe,
-#     a.binaries,
-#     a.zipfiles,
-#     a.datas,
-#     strip=False,
-#     upx=True,
-#     upx_exclude=[],
+# використовуйте альтернативну конфігурацію PyInstaller
 #     name='Handwrite2Print'
 # )

@@ -8,6 +8,11 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Константи для моделей LLM
+DEFAULT_LLM_MODEL = 'llama3.2:1b'  # Дефолтна легка модель (~1-2 GB RAM)
+UKRAINA_CORRECT = 'Україна'
+UKRAINA_INCORRECT = 'Україноа'
+
 
 class ImprovedLLMPostProcessor:
     """Покращений клас для пост-обробки тексту через LLM API"""
@@ -62,16 +67,16 @@ class ImprovedLLMPostProcessor:
         self.api_url = api_url or "http://localhost:11434"
         # Закріплюємо на llama3.2:1b - дуже легка модель для обмеженої пам'яті
         # llama3.2:1b потребує ~1-2 GB
-        if model and model.strip() and model.strip().lower() not in ['llama3.2:1b']:
+        if model and model.strip() and model.strip().lower() not in [DEFAULT_LLM_MODEL]:
             # Якщо явно вказана інша модель, використовуємо її
             self.model = model.strip()
             logger.info(f"[ImprovedLLM] Модель з конфігурації: '{self.model}'")
             print(f"[ImprovedLLM] Модель з конфігурації: '{self.model}'", flush=True)
         else:
             # Завжди використовуємо llama3.2:1b як дефолтну (закріплено) - дуже легка версія
-            self.model = 'llama3.2:1b'
-            logger.info(f"[ImprovedLLM] Використовується llama3.2:1b (закріплено як дефолтна модель, дуже легка ~1-2 GB)")
-            print(f"[ImprovedLLM] Використовується llama3.2:1b (закріплено як дефолтна модель, дуже легка ~1-2 GB)", flush=True)
+            self.model = DEFAULT_LLM_MODEL
+            logger.info("[ImprovedLLM] Використовується llama3.2:1b (закріплено як дефолтна модель, дуже легка ~1-2 GB)")
+            print("[ImprovedLLM] Використовується llama3.2:1b (закріплено як дефолтна модель, дуже легка ~1-2 GB)", flush=True)
         self._available = False
         
         logger.info(f"[ImprovedLLM] Ініціалізація: api_type={api_type}, api_url={self.api_url}, model={self.model}")
@@ -86,8 +91,8 @@ class ImprovedLLMPostProcessor:
         elif self.api_type in ["ollama", "local"]:
             # Використовуємо llama3.2:1b - дуже легка модель для обмеженої пам'яті
             # llama3.2:1b потребує ~1-2 GB
-            return "llama3.2:1b"  # Дуже легка модель для обмеженої пам'яті (~1-2 GB)
-        return "llama3.2:1b"
+            return DEFAULT_LLM_MODEL  # Дуже легка модель для обмеженої пам'яті (~1-2 GB)
+        return DEFAULT_LLM_MODEL
     
     def _check_availability(self):
         """Перевірка доступності API"""
@@ -95,7 +100,7 @@ class ImprovedLLMPostProcessor:
             if self.api_type == "openai":
                 if self.api_key:
                     self._available = True
-                    logger.info(f"[ImprovedLLM] OpenAI доступний (API key вказано)")
+                    logger.info("[ImprovedLLM] OpenAI доступний (API key вказано)")
                 else:
                     logger.warning("[ImprovedLLM] OpenAI API key не вказано")
                     self._available = False
@@ -117,9 +122,9 @@ class ImprovedLLMPostProcessor:
                             
                             # Якщо модель не вказана або порожня, використовуємо llama3.2:1b як дефолтну
                             if not self.model or not self.model.strip():
-                                self.model = 'llama3.2:1b'  # Закріплюємо на llama3.2:1b (дуже легка версія)
-                                logger.info(f"[ImprovedLLM] Модель не вказана, використовується llama3.2:1b (закріплено)")
-                                print(f"[ImprovedLLM] Модель не вказана, використовується llama3.2:1b (закріплено)", flush=True)
+                                self.model = DEFAULT_LLM_MODEL  # Закріплюємо на llama3.2:1b (дуже легка версія)
+                                logger.info("[ImprovedLLM] Модель не вказана, використовується llama3.2:1b (закріплено)")
+                                print("[ImprovedLLM] Модель не вказана, використовується llama3.2:1b (закріплено)", flush=True)
                             else:
                                 logger.info(f"[ImprovedLLM] Використовується модель з конфігурації: {self.model}")
                             
@@ -142,7 +147,7 @@ class ImprovedLLMPostProcessor:
                                 logger.warning(f"[ImprovedLLM] ✗ Модель {self.model} не знайдена. Доступні: {models}")
                                 # Спробуємо знайти легкі моделі (менше 3B параметрів) для обмеженої пам'яті
                                 # Пріоритет: llama3.2:1b > llama3.2:3b > інші легкі
-                                alternatives = ['llama3.2:1b', 'llama3.2:3b']
+                                alternatives = [DEFAULT_LLM_MODEL, 'llama3.2:3b']
                                 alternative = None
                                 for alt in alternatives:
                                     # Шукаємо точну відповідність або частину назви
@@ -169,15 +174,17 @@ class ImprovedLLMPostProcessor:
                                         print(f"[ImprovedLLM] ⚠️ Легкі моделі не знайдені, використовується: {self.model}", flush=True)
                                         self._available = True
                                     else:
-                                        logger.error(f"[ImprovedLLM] ✗ Моделі не знайдені. Встановіть легку модель: ollama pull llama3.2:1b")
-                                        print(f"[ImprovedLLM] ✗ Моделі не знайдені. Встановіть легку модель: ollama pull llama3.2:1b", flush=True)
+                                        error_msg = (f"[ImprovedLLM] ✗ Моделі не знайдені. "
+                                                   f"Встановіть легку модель: ollama pull {DEFAULT_LLM_MODEL}")
+                                        logger.error(error_msg)
+                                        print(error_msg, flush=True)
                                         self._available = False
                         else:
                             logger.warning(f"[ImprovedLLM] API повернув статус {response.status_code}")
                             self._available = False
                     except requests.exceptions.ConnectionError as e:
                         logger.warning(f"[ImprovedLLM] ✗ API недоступний (немає з'єднання з {api_url}): {e}")
-                        logger.warning(f"[ImprovedLLM] Переконайтеся, що Ollama запущена: ollama serve")
+                        logger.warning("[ImprovedLLM] Переконайтеся, що Ollama запущена: ollama serve")
                         self._available = False
                     except Exception as e:
                         logger.warning(f"[ImprovedLLM] ✗ Помилка перевірки API: {e}")
@@ -246,25 +253,28 @@ class ImprovedLLMPostProcessor:
             # "інб" → "їна" (наприклад, "Украінб" → "Україна")
             if 'інб' in corrected:
                 corrected = corrected.replace('інб', 'їна')
-                logger.info(f"[ImprovedLLM] Просте виправлення: 'інб' → 'їна'")
+                logger.info("[ImprovedLLM] Просте виправлення: 'інб' → 'їна'")
             
             # "інo" → "їна" (якщо є "o" замість "а")
             if 'інo' in corrected:
                 corrected = corrected.replace('інo', 'їна')
-                logger.info(f"[ImprovedLLM] Просте виправлення: 'інo' → 'їна'")
+                logger.info("[ImprovedLLM] Просте виправлення: 'інo' → 'їна'")
             
             # "Україноа" → "Україна" (помилка "оа" замість "а")
-            if 'Україноа' in corrected:
-                corrected = corrected.replace('Україноа', 'Україна')
-                logger.info(f"[ImprovedLLM] Просте виправлення: 'Україноа' → 'Україна'")
-            if 'україноа' in corrected.lower():
-                corrected = corrected.replace('україноа', 'україна').replace('Україноа', 'Україна')
-                logger.info(f"[ImprovedLLM] Просте виправлення: 'україноа' → 'україна'")
+            if UKRAINA_INCORRECT in corrected:
+                corrected = corrected.replace(UKRAINA_INCORRECT, UKRAINA_CORRECT)
+                logger.info("[ImprovedLLM] Просте виправлення: '%s' → '%s'",
+                          UKRAINA_INCORRECT, UKRAINA_CORRECT)
+            if UKRAINA_INCORRECT.lower() in corrected.lower():
+                corrected = (corrected.replace(UKRAINA_INCORRECT.lower(), UKRAINA_CORRECT.lower())
+                           .replace(UKRAINA_INCORRECT, UKRAINA_CORRECT))
+                logger.info("[ImprovedLLM] Просте виправлення: '%s' → '%s'",
+                          UKRAINA_INCORRECT.lower(), UKRAINA_CORRECT.lower())
             
             # "Україно." → "Україна" (видалення крапки в кінці)
             if corrected.endswith('Україно.') or corrected.endswith('україно.'):
                 corrected = corrected[:-1] + 'а'
-                logger.info(f"[ImprovedLLM] Просте виправлення: 'Україно.' → 'Україна'")
+                logger.info("[ImprovedLLM] Просте виправлення: 'Україно.' → 'Україна'")
         
         return corrected
     
@@ -358,7 +368,7 @@ class ImprovedLLMPostProcessor:
                     import cv2
                     _, buffer = cv2.imencode('.png', image)
                     image_base64 = base64.b64encode(buffer.tobytes()).decode('utf-8')
-                    logger.info(f"[Ollama] Зображення конвертовано в base64 для корекції")
+                    logger.info("[Ollama] Зображення конвертовано в base64 для корекції")
                 except Exception as e:
                     logger.warning(f"[Ollama] Не вдалося конвертувати зображення: {e}")
                     image_base64 = None
@@ -397,7 +407,7 @@ class ImprovedLLMPostProcessor:
             if image_base64:
                 # Для Ollama vision моделей зображення передається як base64 в images
                 user_message["images"] = [image_base64]  # type: ignore
-                logger.info(f"[Ollama] Зображення додано до запиту для корекції")
+                logger.info("[Ollama] Зображення додано до запиту для корекції")
             
             messages.append(user_message)
             
@@ -512,7 +522,7 @@ class ImprovedLLMPostProcessor:
                                         return corrected
                                 return text
                         else:
-                            logger.warning(f"[Ollama] Порожній результат, використовуємо оригінал")
+                            logger.warning("[Ollama] Порожній результат, використовуємо оригінал")
                             return text
                     else:
                         error_text = response.text[:200] if hasattr(response, 'text') else "Unknown error"

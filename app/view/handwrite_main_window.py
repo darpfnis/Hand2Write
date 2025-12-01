@@ -26,13 +26,27 @@ from improved_controller import ImprovedController
 
 logger = logging.getLogger(__name__)
 
+# Константи для назв мов
+LANG_UKRAINIAN = "Українська"
+LANG_ENGLISH = "Англійська"
+LANG_BOTH = "Обидві"
+
+# Константи для повідомлень
+MSG_ERROR = "Помилка"
+MSG_INFO = "Інформація"
+MSG_SAVE_RESULT = "Зберегти результат"
+MSG_RECOGNIZED_TEXT = "розпізнаний текст"
+
+# Константа для стилю CSS
+TITLE_STYLE = "color: #2c3e50; padding: 5px;"
+
 
 class MainWindow(QMainWindow):
     """Головне вікно програми"""
     
     # Інформація про OCR рушії для різних мов
     OCR_ENGINE_INFO = {
-        "Українська": {
+        LANG_UKRAINIAN: {
             "Tesseract": {
                 "description": "Найкраща підтримка української мови. Швидкий та точний для рукописного тексту.",
                 "accuracy": 85
@@ -46,7 +60,7 @@ class MainWindow(QMainWindow):
                 "accuracy": 40
             }
         },
-        "Англійська": {
+        LANG_ENGLISH: {
             "Tesseract": {
                 "description": "Надійний та швидкий рушій для англійської мови. Добра точність для рукописного тексту.",
                 "accuracy": 80
@@ -68,7 +82,7 @@ class MainWindow(QMainWindow):
         self.controller = ImprovedController(self)
         self.current_image_path = None
         self.current_mode = None  # 'draw' або 'upload'
-        self.current_language = "Українська"  # Поточна мова для tooltip
+        self.current_language = LANG_UKRAINIAN  # Поточна мова для tooltip
         
         # Створюємо окремі панелі налаштувань OCR для кожного режиму
         # (один віджет не може бути в двох місцях одночасно)
@@ -159,7 +173,7 @@ class MainWindow(QMainWindow):
         load_action.triggered.connect(self.load_image)
         file_menu.addAction(load_action)
         
-        save_action = QAction("Зберегти результат", self)
+        save_action = QAction(MSG_SAVE_RESULT, self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.export_text)
         file_menu.addAction(save_action)
@@ -299,7 +313,7 @@ class MainWindow(QMainWindow):
     def _create_combo_pair(self):
         """Створення пари комбобоксів (мова та рушій) з синхронізацією"""
         language_combo = QComboBox()
-        language_combo.addItems(["Українська", "Англійська"])
+        language_combo.addItems([LANG_UKRAINIAN, LANG_ENGLISH])
         language_combo.setMinimumWidth(200)
         
         ocr_engine_combo = QComboBox()
@@ -321,7 +335,7 @@ class MainWindow(QMainWindow):
             self.ocr_engine_combo = ocr_engine_combo
             # Підключаємо сигнал зміни мови для оновлення списку рушіїв
             self.language_combo.currentTextChanged.connect(self.update_ocr_engines)
-            self.update_ocr_engines("Українська")
+            self.update_ocr_engines(LANG_UKRAINIAN)
         
         # Синхронізуємо рушії
         if hasattr(self, 'ocr_engine_combo') and self.ocr_engine_combo is not None and self.ocr_engine_combo != ocr_engine_combo:
@@ -364,7 +378,7 @@ class MainWindow(QMainWindow):
         
         # Для обох мов однаковий набір OCR рушіїв
         possible_engines = ["Tesseract", "EasyOCR", "PaddleOCR"]
-        if language == "Українська":
+        if language == LANG_UKRAINIAN:
             default_engine = "Tesseract"
         else:
             default_engine = None
@@ -442,7 +456,7 @@ class MainWindow(QMainWindow):
         
         # Для української мови приховуємо PaddleOCR та встановлюємо Tesseract як основний
         # Tesseract має найкращу підтримку української мови
-        if language == "Українська":
+        if language == LANG_UKRAINIAN:
             engines = ["Tesseract", "EasyOCR"]
             # Встановлюємо Tesseract як основний для української
             default_engine = "Tesseract"
@@ -533,7 +547,7 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(16)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #2c3e50; padding: 5px;")
+        title.setStyleSheet(TITLE_STYLE)
         layout.addWidget(title)
         
         # Полотно для малювання
@@ -558,7 +572,7 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(16)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #2c3e50; padding: 5px;")
+        title.setStyleSheet(TITLE_STYLE)
         layout.addWidget(title)
         
         # Лейбл для зображення
@@ -622,7 +636,7 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(16)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #2c3e50; padding: 5px;")
+        title.setStyleSheet(TITLE_STYLE)
         layout.addWidget(title)
         
         # Створюємо текстове поле для результату (спільне для обох режимів)
@@ -729,7 +743,7 @@ class MainWindow(QMainWindow):
             file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
             if file_size > 10:
                 QMessageBox.warning(
-                    self, "Помилка",
+                    self, MSG_ERROR,
                     "Файл занадто великий. Максимальний розмір: 10 MB"
                 )
                 return
@@ -738,7 +752,7 @@ class MainWindow(QMainWindow):
             from handwrite_config import Config
             if not Config.is_valid_image_format(file_path):
                 QMessageBox.warning(
-                    self, "Помилка",
+                    self, MSG_ERROR,
                     f"Непідтримуваний формат файлу. Підтримувані формати: {', '.join(Config.SUPPORTED_IMAGE_FORMATS)}"
                 )
                 return
@@ -747,7 +761,7 @@ class MainWindow(QMainWindow):
             pixmap = QPixmap(file_path)
             if pixmap.isNull():
                 QMessageBox.warning(
-                    self, "Помилка",
+                    self, MSG_ERROR,
                     "Не вдалося завантажити зображення. Файл може бути пошкоджений або має непідтримуваний формат."
                 )
                 return
@@ -756,7 +770,7 @@ class MainWindow(QMainWindow):
             width, height = pixmap.width(), pixmap.height()
             if width > Config.MAX_IMAGE_WIDTH or height > Config.MAX_IMAGE_HEIGHT:
                 QMessageBox.warning(
-                    self, "Помилка",
+                    self, MSG_ERROR,
                     f"Зображення занадто велике ({width}x{height}). Максимальні розміри: {Config.MAX_IMAGE_WIDTH}x{Config.MAX_IMAGE_HEIGHT}"
                 )
                 return
@@ -778,16 +792,16 @@ class MainWindow(QMainWindow):
         # Отримуємо шлях до зображення
         if self.current_mode == 'upload':
             if not self.current_image_path:
-                QMessageBox.warning(self, "Помилка", "Завантажте зображення!")
+                QMessageBox.warning(self, MSG_ERROR, "Завантажте зображення!")
                 return
             image_path = self.current_image_path
         elif self.current_mode == 'draw':
             if not hasattr(self, 'canvas') or self.canvas is None:
-                QMessageBox.warning(self, "Помилка", "Полотно не ініціалізовано!")
+                QMessageBox.warning(self, MSG_ERROR, "Полотно не ініціалізовано!")
                 return
             image_path = self.canvas.save_to_temp()
             if not image_path:
-                QMessageBox.warning(self, "Помилка", "Намалюйте текст!")
+                QMessageBox.warning(self, MSG_ERROR, "Намалюйте текст!")
                 return
         else:
             QMessageBox.warning(self, "Помилка", "Оберіть режим роботи!")
@@ -795,7 +809,7 @@ class MainWindow(QMainWindow):
         
         # Перевірка, чи файл існує
         if not os.path.exists(image_path):
-            QMessageBox.critical(self, "Помилка", f"Файл зображення не знайдено: {image_path}")
+            QMessageBox.critical(self, MSG_ERROR, f"Файл зображення не знайдено: {image_path}")
             return
         
         # Отримуємо налаштування з поточної панелі
@@ -834,7 +848,7 @@ class MainWindow(QMainWindow):
             # Шукаємо result_text в поточному віджеті
             for widget in current_widget.findChildren(QTextEdit):
                 placeholder = widget.placeholderText()
-                if placeholder and "розпізнаний текст" in placeholder:
+                if placeholder and MSG_RECOGNIZED_TEXT in placeholder:
                     self.result_text = widget
                     logger.info(f"[MainWindow] Оновлено посилання на result_text для режиму {self.current_mode}")
                     return
@@ -865,7 +879,7 @@ class MainWindow(QMainWindow):
             # Шукаємо result_text в поточному віджеті через findChildren
             for widget in current_widget.findChildren(QTextEdit):
                 placeholder = widget.placeholderText()
-                if placeholder and "розпізнаний текст" in placeholder:
+                if placeholder and MSG_RECOGNIZED_TEXT in placeholder:
                     self.result_text = widget
                     logger.info(f"[MainWindow] Знайдено result_text в поточному віджеті через findChildren")
                     return widget
@@ -889,7 +903,7 @@ class MainWindow(QMainWindow):
                 # Потім шукаємо через findChildren
                 for text_edit in interface_widget.findChildren(QTextEdit):
                     placeholder = text_edit.placeholderText()
-                    if placeholder and "розпізнаний текст" in placeholder:
+                    if placeholder and MSG_RECOGNIZED_TEXT in placeholder:
                         self.result_text = text_edit
                         logger.info(f"[MainWindow] Знайдено result_text в інтерфейсі через findChildren")
                         return text_edit
@@ -953,7 +967,7 @@ class MainWindow(QMainWindow):
                 logger.info(f"[MainWindow] Результат виведено в поле результату")
             except Exception as e:
                 logger.error(f"[MainWindow] Помилка при виведенні результату: {e}")
-                QMessageBox.warning(self, "Помилка", f"Не вдалося вивести результат: {e}")
+                QMessageBox.warning(self, MSG_ERROR, f"Не вдалося вивести результат: {e}")
         else:
             logger.error("[MainWindow] Не вдалося знайти result_text для відображення результату")
             # Показуємо результат у діалоговому вікні як fallback
@@ -968,18 +982,18 @@ class MainWindow(QMainWindow):
             ocr_settings.hide_used_engine()
         self.progress_bar.hide()
         if hasattr(self, 'statusbar'):
-            self.statusbar.showMessage("Помилка", 5000)
+            self.statusbar.showMessage(MSG_ERROR, 5000)
         QMessageBox.critical(self, "Помилка", error_msg)
         """Обробник помилки розпізнавання"""
         self.progress_bar.hide()
-        self.statusbar.showMessage("Помилка", 5000)
+        self.statusbar.showMessage(MSG_ERROR, 5000)
         QMessageBox.critical(self, "Помилка розпізнавання", error_msg)
         
     def copy_text(self):
         """Копіювання тексту в буфер обміну"""
         result_text = self._get_result_text()
         if result_text is None:
-            QMessageBox.information(self, "Інформація", "Немає тексту для копіювання")
+            QMessageBox.information(self, MSG_INFO, "Немає тексту для копіювання")
             return
         
         text = result_text.toPlainText()
@@ -989,29 +1003,29 @@ class MainWindow(QMainWindow):
             clipboard.setText(text)
             self.statusbar.showMessage("Текст скопійовано в буфер обміну", 3000)
         else:
-            QMessageBox.information(self, "Інформація", "Немає тексту для копіювання")
+            QMessageBox.information(self, MSG_INFO, "Немає тексту для копіювання")
             
     def export_text(self, format_type=None):
         """Експорт тексту у файл"""
         result_text = self._get_result_text()
         if result_text is None:
-            QMessageBox.information(self, "Інформація", "Немає тексту для збереження")
+            QMessageBox.information(self, MSG_INFO, "Немає тексту для збереження")
             return
         
         text = result_text.toPlainText()
         if not text:
-            QMessageBox.information(self, "Інформація", "Немає тексту для збереження")
+            QMessageBox.information(self, MSG_INFO, "Немає тексту для збереження")
             return
             
         if format_type is None:
             # Показати діалог вибору формату
-            file_path, selected_filter = QFileDialog.getSaveFileName(
-                self, "Зберегти результат", "",
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, MSG_SAVE_RESULT, "",
                 "Text files (*.txt);;Word documents (*.docx);;PDF files (*.pdf)"
             )
         else:
             file_path, _ = QFileDialog.getSaveFileName(
-                self, "Зберегти результат", "",
+                self, MSG_SAVE_RESULT, "",
                 f"{format_type.upper()} files (*.{format_type})"
             )
             
@@ -1021,7 +1035,7 @@ class MainWindow(QMainWindow):
                 self.statusbar.showMessage(f"Збережено: {os.path.basename(file_path)}", 5000)
                 QMessageBox.information(self, "Успіх", "Файл успішно збережено!")
             else:
-                QMessageBox.critical(self, "Помилка", "Не вдалося зберегти файл")
+                QMessageBox.critical(self, MSG_ERROR, "Не вдалося зберегти файл")
                 
     def clear_all(self):
         """Очищення всіх даних"""

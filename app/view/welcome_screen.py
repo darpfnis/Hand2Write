@@ -7,6 +7,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QMouseEvent
 
+# Константа для шрифту
+DEFAULT_FONT = "Segoe UI"
+
 
 class WelcomeScreen(QWidget):
     """Початкове меню з вибором режиму роботи"""
@@ -37,7 +40,7 @@ class WelcomeScreen(QWidget):
         # Заголовок
         title = QLabel("Система розпізнавання рукописного тексту")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont("Segoe UI", 32, QFont.Weight.Bold)
+        title_font = QFont(DEFAULT_FONT, 32, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #1976D2; background-color: transparent;")
         layout.addWidget(title)
@@ -57,7 +60,7 @@ class WelcomeScreen(QWidget):
         # Підзаголовок
         subtitle = QLabel("Оберіть режим роботи")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle_font = QFont("Segoe UI", 16)
+        subtitle_font = QFont(DEFAULT_FONT, 16)
         subtitle.setFont(subtitle_font)
         subtitle.setStyleSheet("color: #546E7A; background-color: transparent;")
         layout.addWidget(subtitle)
@@ -126,7 +129,7 @@ class WelcomeScreen(QWidget):
         # Заголовок кнопки
         title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont("Segoe UI", 18, QFont.Weight.Bold)
+        title_font = QFont(DEFAULT_FONT, 18, QFont.Weight.Bold)
         title_label.setFont(title_font)
         title_label.setStyleSheet(f"color: {color}; background-color: transparent;")
         title_label.setWordWrap(True)
@@ -137,7 +140,7 @@ class WelcomeScreen(QWidget):
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc_label.setWordWrap(True)
         desc_label.setMinimumHeight(50)
-        desc_font = QFont("Segoe UI", 11)
+        desc_font = QFont(DEFAULT_FONT, 11)
         desc_label.setFont(desc_font)
         desc_label.setStyleSheet(f"color: #546E7A; background-color: transparent; padding: 5px;")
         frame_layout.addWidget(desc_label)

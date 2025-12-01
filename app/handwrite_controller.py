@@ -181,8 +181,7 @@ class Controller:
             self.recognition_thread.progress.connect(self.main_window.on_progress_updated)
         self.recognition_thread.start()
 
-    def recognize_text_async(self, image_path, engine, language,
-                            use_ai_correction=False, llm_config=None):
+    def recognize_text_async(self, image_path, engine, language):
         """Асинхронне розпізнавання з новим API"""
         from model.ocr_manager import OCREngine, OCRLanguage
 

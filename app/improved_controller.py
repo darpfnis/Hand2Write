@@ -14,6 +14,11 @@ from model.handwrite_export import TextExporter
 
 logger = logging.getLogger(__name__)
 
+# Константи для назв рушіїв OCR
+TESSERACT_DISPLAY_NAME = 'Tesseract OCR'
+EASYOCR_DISPLAY_NAME = 'EasyOCR'
+PADDLEOCR_DISPLAY_NAME = 'PaddleOCR'
+
 
 class RecognitionWorker(QThread):
     """Робочий потік для розпізнавання"""
@@ -74,9 +79,9 @@ class RecognitionWorker(QThread):
                         progress = 30 + int((idx / total_engines) * 40)  # 30-70%
                         engine_name = engine.value
                         engine_display_names = {
-                            'tesseract': 'Tesseract OCR',
-                            'easyocr': 'EasyOCR',
-                            'paddleocr': 'PaddleOCR'
+                            'tesseract': TESSERACT_DISPLAY_NAME,
+                            'easyocr': EASYOCR_DISPLAY_NAME,
+                            'paddleocr': PADDLEOCR_DISPLAY_NAME
                         }
                         engine_display = engine_display_names.get(engine_name, engine_name.title())
                         self.progress_updated.emit(progress, f"Розпізнавання ({engine_display})...")
@@ -126,7 +131,7 @@ class RecognitionWorker(QThread):
                 # Завершення (100%)
                 self.progress_updated.emit(100, "Завершено!")
                 engine_display_names = {
-                    'tesseract': 'Tesseract OCR',
+                    'tesseract': TESSERACT_DISPLAY_NAME,
                     'easyocr': 'EasyOCR',
                     'paddleocr': 'PaddleOCR'
                 }
@@ -168,7 +173,7 @@ class RecognitionWorker(QThread):
                 self.progress_updated.emit(100, "Завершено!")
                 engine_name = self.engine.value
                 engine_display_names = {
-                    'tesseract': 'Tesseract OCR',
+                    'tesseract': TESSERACT_DISPLAY_NAME,
                     'easyocr': 'EasyOCR',
                     'paddleocr': 'PaddleOCR'
                 }
@@ -195,7 +200,6 @@ class RecognitionWorker(QThread):
         # Фільтрація результатів перед відправкою в ШІ
         # Виключаємо явно неправильні результати
         lang_name = "ukrainian" if self.language == OCRLanguage.UKRAINIAN else "english"
-        lang_name_uk = "українська" if lang_name == "ukrainian" else "англійська"
         
         filtered_results = {}
         for engine, text in results.items():
@@ -246,7 +250,7 @@ class RecognitionWorker(QThread):
         
         # Якщо після фільтрації не залишилося результатів, використовуємо всі
         if not filtered_results:
-            logger.warning(f"[RecognitionWorker] Всі результати відфільтровані, використовуємо всі результати")
+            logger.warning("[RecognitionWorker] Всі результати відфільтровані, використовуємо всі результати")
             filtered_results = results
         
         # Якщо після фільтрації залишився один результат, повертаємо його
@@ -256,11 +260,11 @@ class RecognitionWorker(QThread):
             return filtered_results[engine], engine
         
         # Використовуємо fallback scoring для вибору найкращого результату
-        logger.info(f"[RecognitionWorker] Використання fallback вибору за очками...")
-        print(f"[RecognitionWorker] Використання fallback вибору за очками...", flush=True)
+        logger.info("[RecognitionWorker] Використання fallback вибору за очками...")
+        print("[RecognitionWorker] Використання fallback вибору за очками...", flush=True)
         
         # Fallback: вибираємо найкращий результат на основі кількох критеріїв
-        def score_result(engine, text):
+        def score_result(text):
             """Оцінка якості результату"""
             score = 0
             text_stripped = text.strip()
@@ -290,7 +294,6 @@ class RecognitionWorker(QThread):
                     text_no_spaces = text_lower.replace(' ', '').replace('\n', '')
                     
                     # Перевірка на точну відповідність або схожість
-                    best_match_score = 0
                     for word in common_uk_words:
                         if word in text_lower:
                             score += 150  # Великий бонус за правильне слово
@@ -434,7 +437,7 @@ class RecognitionWorker(QThread):
         
         scored_results = []
         for engine, text in results_to_score.items():
-            score = score_result(engine, text)
+            score = score_result(text)
             # Додатковий штраф для коротких результатів, якщо є довші альтернативи
             if self.language == OCRLanguage.UKRAINIAN and len(results_to_score) > 1:
                 text_len = len(text.strip())
