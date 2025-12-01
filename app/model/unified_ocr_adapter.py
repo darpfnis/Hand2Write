@@ -201,199 +201,242 @@ class UnifiedOCRAdapter:
         Returns:
             розпізнаний текст
         """
-        # ВИМКНЕНО: Автоматичне перемикання для української мови
-        # Дозволяємо використовувати PaddleOCR для української, щоб перевірити, чи він працює
-        # Якщо потрібно, можна увімкнути це перемикання назад
-        # if language == 'ukr' and self.engine_name == 'paddleocr':
-        #     logger.warning(f"[OCR] ⚠️ PaddleOCR має обмежену підтримку української мови")
-        #     logger.warning(f"[OCR] ⚠️ Автоматичне перемикання на EasyOCR для кращого розпізнавання кирилиці")
-        #     # Спробуємо перемкнутися на EasyOCR
-        #     if self._set_strategy('easyocr'):
-        #         logger.info(f"[OCR] ✓ Перемкнуто на EasyOCR для української мови")
-        #     elif self._set_strategy('tesseract'):
-        #         logger.info(f"[OCR] ✓ Перемкнуто на Tesseract для української мови (EasyOCR недоступний)")
-        #     else:
-        #         logger.warning(f"[OCR] ⚠️ Не вдалося перемкнутися на інший рушій, використовуємо PaddleOCR")
-        
-        # Логуємо, який рушій буде використовуватися
-        print(f"[OCR] Запитаний рушій: {self.engine_name}, Мова: {language}", flush=True)
-        logger.info(f"[OCR] Запитаний рушій: {self.engine_name}, Мова: {language}")
+        self._log_recognition_request(language)
         
         try:
-            # Завантаження зображення, якщо потрібно
-            import cv2
-            if isinstance(image, str):
-                processed_image = self.preprocessor.process_from_path(image)
-            elif preprocess:
-                processed_image = self.preprocessor.process(image)
-            else:
-                # Переконуємося, що це numpy array
-                if not isinstance(image, np.ndarray):
-                    image = np.array(image)
-                if len(image.shape) == 3:
-                    processed_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                else:
-                    processed_image = image.astype(np.uint8) if image.dtype != np.uint8 else image
+            processed_image = self._prepare_image(image, preprocess)
+            self._ensure_strategy_available()
+            word_segments = self._segment_words_if_needed(processed_image, split_into_words)
             
-            # Перевірка стратегії
-            if not self._current_strategy:
-                # Остання спроба - перемкнутися на Tesseract
-                logger.warning("[OCR] ⚠️ Поточна стратегія не встановлена, спроба перемкнутися на Tesseract")
-                if self._set_strategy('tesseract'):
-                    logger.info("[OCR] ✓ Успішно перемкнуто на Tesseract")
-                else:
-                    raise RuntimeError("Жоден OCR рушій не доступний")
-            
-            # Перевірка стратегії після можливого fallback
-            if not self._current_strategy:
-                raise RuntimeError("Жоден OCR рушій не доступний")
-            
-            # Опціональна сегментація на слова (для рукописного тексту)
-            word_segments = []
-            if split_into_words:
-                try:
-                    word_segments = WordSegmenter.segment_words(processed_image)
-                    if len(word_segments) <= 1:
-                        logger.info("[OCR] Сегментація повернула <=1 сегмент, використовуємо повне зображення")
-                        word_segments = []
-                except Exception as seg_error:
-                    logger.warning(f"[OCR] Помилка сегментації слів: {seg_error}")
-                    word_segments = []
-            
-            # Логуємо, який рушій використовується
             strategy_name = self._current_strategy.get_name()
-            logger.info(OCR_START_MESSAGE)
-            logger.info(f"[OCR] Використовується рушій: {strategy_name}")
-            logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
-            logger.info(f"[OCR] Мова розпізнавання: {language}")
-            logger.info(f"[OCR] Розмір обробленого зображення: {processed_image.shape}")
+            self._log_recognition_start(strategy_name, language, processed_image)
             
-            # Розпізнавання
-            import time
-            recognize_start = time.time()
-            print(OCR_START_MESSAGE, flush=True)
-            print(f"[OCR] Використовується рушій: {strategy_name}", flush=True)
-            print(f"[OCR] Запитаний рушій: {self.engine_name}", flush=True)
-            print(f"[OCR] Мова: {language}", flush=True)
-            logger.info(OCR_START_MESSAGE)
-            logger.info(f"[OCR] Використовується рушій: {strategy_name}")
-            logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
-            logger.info(f"[OCR] Мова розпізнавання: {language}")
-            logger.info(f"[OCR] Розмір обробленого зображення: {processed_image.shape}")
-            
-            try:
-                if word_segments:
-                    print(f"[OCR] Розпізнавання {len(word_segments)} сегментів...", flush=True)
-                    recognized_words = []
-                    for idx, segment in enumerate(word_segments, start=1):
-                        logger.info(f"[OCR] Розпізнавання сегмента #{idx} (bbox={segment.bbox})")
-                        print(f"[OCR] Розпізнавання сегмента #{idx}...", flush=True)
-                        try:
-                            segment_text = self._current_strategy.recognize(segment.image, language)
-                            if segment_text:
-                                recognized_words.append(segment_text.strip())
-                                print(f"[OCR] Сегмент #{idx}: '{segment_text[:50]}...'", flush=True)
-                            else:
-                                logger.warning(f"[OCR] Порожній результат для сегмента #{idx}")
-                                print(f"[OCR] ⚠️ Сегмент #{idx}: порожній результат", flush=True)
-                        except Exception as seg_error:
-                            logger.error(f"[OCR] Помилка розпізнавання сегмента #{idx}: {seg_error}")
-                            print(f"[OCR] ✗ Помилка сегмента #{idx}: {seg_error}", flush=True)
-                    text = " ".join(recognized_words).strip()
-                    print(f"[OCR] Об'єднано {len(recognized_words)} сегментів: {len(text)} символів", flush=True)
-                else:
-                    print(f"[OCR] Виклик strategy.recognize() для рушія '{strategy_name}'...", flush=True)
-                    logger.info(f"[OCR] Виклик strategy.recognize() для рушія '{strategy_name}'...")
-                    try:
-                        text = self._current_strategy.recognize(processed_image, language)
-                        result_len = len(text) if text else 0
-                        logger.info(f"[OCR] strategy.recognize() повернув результат: {result_len} символів")
-                        print(f"[OCR] strategy.recognize() повернув результат: {result_len} символів", flush=True)
-                        if text:
-                            print(f"[OCR] Перші 100 символів: {text[:100]}...", flush=True)
-                        else:
-                            print("[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ!", flush=True)
-                    except Exception as strategy_error:
-                        logger.error(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", exc_info=True)
-                        print(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", flush=True)
-                        import traceback
-                        traceback_str = traceback.format_exc()
-                        print(f"[OCR] Traceback:\n{traceback_str}", flush=True)
-                        logger.error(f"[OCR] Traceback:\n{traceback_str}")
-                        raise
-                recognize_elapsed = time.time() - recognize_start
-                logger.info(f"[OCR] strategy.recognize() завершено за {recognize_elapsed:.2f} секунд")
-                logger.info(f"[OCR] Розпізнавання завершено, довжина тексту: {len(text)} символів")
-                if text:
-                    logger.info(f"[OCR] Перші 100 символів результату: {text[:100]}...")
-                else:
-                    logger.warning(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!")
-                    print(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!", flush=True)
-                logger.info("[OCR] ===== ЗАВЕРШЕНО РОЗПІЗНАВАННЯ =====")
-            except Exception as e:
-                recognize_elapsed = time.time() - recognize_start
-                error_msg = f"[OCR] Помилка в strategy.recognize() після {recognize_elapsed:.2f} секунд: {e}"
-                print(error_msg)  # Додаємо print для гарантії виведення
-                logger.error(error_msg)
-                import traceback
-                traceback_str = traceback.format_exc()
-                print(f"[OCR] Traceback: {traceback_str}")  # Додаємо print для гарантії виведення
-                logger.error(f"[OCR] Traceback: {traceback_str}")
-                raise
-            
-            # LLM пост-обробка з валідацією
-            if self.use_llm_correction and self.llm_processor and text:
-                try:
-                    lang_map = {
-                        'eng': 'english',
-                        'ukr': 'ukrainian',
-                        'eng+ukr': 'ukrainian',
-                        'ukr+eng': 'ukrainian'
-                    }
-                    lang_name = lang_map.get(language, 'english')
-                    
-                    # Використовуємо валідацію та виправлення
-                    validation_result = self.llm_processor.validate_and_correct(text, lang_name)
-                    
-                    if validation_result['corrected'] and validation_result['is_valid']:
-                        text = validation_result['corrected']
-                        logger.info(f"[OCR] LLM виправлення застосовано. Впевненість: {validation_result['confidence']:.2f}")
-                        if validation_result['changes']:
-                            logger.info(f"[OCR] Зміни: {', '.join(validation_result['changes'])}")
-                    else:
-                        # Fallback на просте виправлення
-                        text = LLMPostProcessor.simple_correction(text)
-                        logger.warning("[OCR] LLM валідація не пройдена, використано просте виправлення")
-                except Exception as e:
-                    logger.warning(f"Помилка LLM пост-обробки: {e}")
-                    # Використовуємо просте виправлення
-                    text = LLMPostProcessor.simple_correction(text)
-            elif text:
-                # Завжди застосовуємо просте виправлення, навіть без LLM
-                text = LLMPostProcessor.simple_correction(text)
+            text = self._recognize_text(processed_image, language, word_segments, strategy_name)
+            text = self._apply_llm_correction(text, language)
             
             return text.strip() if text else ""
             
         except Exception as e:
-            logger.error(f"[OCR] ✗ Помилка розпізнавання рушієм '{self.engine_name}': {e}")
-            import traceback
-            logger.error(f"[OCR] Traceback: {traceback.format_exc()}")
-            # Graceful degradation - пробуємо інші рушії
-            if self.engine_name != 'tesseract':
-                logger.warning(f"[OCR] ⚠️ СПРОБА FALLBACK НА TESSERACT (оригінальний рушій: {self.engine_name})")
-                try:
-                    old_engine = self.engine_name
-                    if self._set_strategy('tesseract'):
-                        logger.warning(f"[OCR] ⚠️ FALLBACK: Використовується Tesseract замість {old_engine}")
-                        fallback_result = self.recognize(image, language, preprocess, split_into_words=split_into_words)
-                        logger.warning(f"[OCR] ⚠️ FALLBACK: Результат від Tesseract: {len(fallback_result)} символів")
-                        return fallback_result
-                except Exception as fallback_error:
-                    logger.error(f"[OCR] ✗ Fallback на Tesseract також не вдався: {fallback_error}")
+            return self._handle_recognition_error(e, image, language, preprocess, split_into_words)
+    
+    def _log_recognition_request(self, language: str) -> None:
+        """Логування запиту на розпізнавання"""
+        print(f"[OCR] Запитаний рушій: {self.engine_name}, Мова: {language}", flush=True)
+        logger.info(f"[OCR] Запитаний рушій: {self.engine_name}, Мова: {language}")
+    
+    def _prepare_image(self, image, preprocess: bool) -> np.ndarray:
+        """Підготовка зображення для розпізнавання"""
+        import cv2
+        
+        if isinstance(image, str):
+            return self.preprocessor.process_from_path(image)
+        if preprocess:
+            return self.preprocessor.process(image)
+        
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+        if len(image.shape) == 3:
+            return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        return image.astype(np.uint8) if image.dtype != np.uint8 else image
+    
+    def _ensure_strategy_available(self) -> None:
+        """Перевірка та встановлення стратегії OCR"""
+        if not self._current_strategy:
+            logger.warning("[OCR] ⚠️ Поточна стратегія не встановлена, спроба перемкнутися на Tesseract")
+            if self._set_strategy('tesseract'):
+                logger.info("[OCR] ✓ Успішно перемкнуто на Tesseract")
+            else:
+                raise RuntimeError("Жоден OCR рушій не доступний")
+        
+        if not self._current_strategy:
+            raise RuntimeError("Жоден OCR рушій не доступний")
+    
+    def _segment_words_if_needed(self, processed_image: np.ndarray, split_into_words: bool) -> list:
+        """Сегментація зображення на слова, якщо потрібно"""
+        if not split_into_words:
+            return []
+        
+        try:
+            word_segments = WordSegmenter.segment_words(processed_image)
+            if len(word_segments) <= 1:
+                logger.info("[OCR] Сегментація повернула <=1 сегмент, використовуємо повне зображення")
+                return []
+            return word_segments
+        except Exception as seg_error:
+            logger.warning(f"[OCR] Помилка сегментації слів: {seg_error}")
+            return []
+    
+    def _log_recognition_start(self, strategy_name: str, language: str, processed_image: np.ndarray) -> None:
+        """Логування початку розпізнавання"""
+        logger.info(OCR_START_MESSAGE)
+        logger.info(f"[OCR] Використовується рушій: {strategy_name}")
+        logger.info(f"[OCR] Запитаний рушій: {self.engine_name}")
+        logger.info(f"[OCR] Мова розпізнавання: {language}")
+        logger.info(f"[OCR] Розмір обробленого зображення: {processed_image.shape}")
+        
+        print(OCR_START_MESSAGE, flush=True)
+        print(f"[OCR] Використовується рушій: {strategy_name}", flush=True)
+        print(f"[OCR] Запитаний рушій: {self.engine_name}", flush=True)
+        print(f"[OCR] Мова: {language}", flush=True)
+    
+    def _recognize_text(self, processed_image: np.ndarray, language: str, 
+                       word_segments: list, strategy_name: str) -> str:
+        """Виконання розпізнавання тексту"""
+        import time
+        recognize_start = time.time()
+        
+        try:
+            if word_segments:
+                text = self._recognize_word_segments(word_segments, language)
+            else:
+                text = self._recognize_full_image(processed_image, language, strategy_name)
             
-            # Якщо все не вдалося, повертаємо порожній рядок
-            logger.error("[OCR] ✗ Всі спроби розпізнавання не вдалися")
-            return ""
+            recognize_elapsed = time.time() - recognize_start
+            self._log_recognition_result(text, strategy_name, recognize_elapsed)
+            return text
+        except Exception as e:
+            recognize_elapsed = time.time() - recognize_start
+            self._log_recognition_error(e, recognize_elapsed)
+            raise
+    
+    def _recognize_word_segments(self, word_segments: list, language: str) -> str:
+        """Розпізнавання окремих сегментів слів"""
+        print(f"[OCR] Розпізнавання {len(word_segments)} сегментів...", flush=True)
+        recognized_words = []
+        
+        for idx, segment in enumerate(word_segments, start=1):
+            logger.info(f"[OCR] Розпізнавання сегмента #{idx} (bbox={segment.bbox})")
+            print(f"[OCR] Розпізнавання сегмента #{idx}...", flush=True)
+            
+            try:
+                segment_text = self._current_strategy.recognize(segment.image, language)
+                if segment_text:
+                    recognized_words.append(segment_text.strip())
+                    print(f"[OCR] Сегмент #{idx}: '{segment_text[:50]}...'", flush=True)
+                else:
+                    logger.warning(f"[OCR] Порожній результат для сегмента #{idx}")
+                    print(f"[OCR] ⚠️ Сегмент #{idx}: порожній результат", flush=True)
+            except Exception as seg_error:
+                logger.error(f"[OCR] Помилка розпізнавання сегмента #{idx}: {seg_error}")
+                print(f"[OCR] ✗ Помилка сегмента #{idx}: {seg_error}", flush=True)
+        
+        text = " ".join(recognized_words).strip()
+        print(f"[OCR] Об'єднано {len(recognized_words)} сегментів: {len(text)} символів", flush=True)
+        return text
+    
+    def _recognize_full_image(self, processed_image: np.ndarray, language: str, strategy_name: str) -> str:
+        """Розпізнавання повного зображення"""
+        print(f"[OCR] Виклик strategy.recognize() для рушія '{strategy_name}'...", flush=True)
+        logger.info(f"[OCR] Виклик strategy.recognize() для рушія '{strategy_name}'...")
+        
+        try:
+            text = self._current_strategy.recognize(processed_image, language)
+            result_len = len(text) if text else 0
+            logger.info(f"[OCR] strategy.recognize() повернув результат: {result_len} символів")
+            print(f"[OCR] strategy.recognize() повернув результат: {result_len} символів", flush=True)
+            
+            if text:
+                print(f"[OCR] Перші 100 символів: {text[:100]}...", flush=True)
+            else:
+                print("[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ!", flush=True)
+            
+            return text
+        except Exception as strategy_error:
+            logger.error(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", exc_info=True)
+            print(f"[OCR] ✗ Помилка в strategy.recognize(): {strategy_error}", flush=True)
+            import traceback
+            traceback_str = traceback.format_exc()
+            print(f"[OCR] Traceback:\n{traceback_str}", flush=True)
+            logger.error(f"[OCR] Traceback:\n{traceback_str}")
+            raise
+    
+    def _log_recognition_result(self, text: str, strategy_name: str, elapsed: float) -> None:
+        """Логування результату розпізнавання"""
+        logger.info(f"[OCR] strategy.recognize() завершено за {elapsed:.2f} секунд")
+        logger.info(f"[OCR] Розпізнавання завершено, довжина тексту: {len(text)} символів")
+        
+        if text:
+            logger.info(f"[OCR] Перші 100 символів результату: {text[:100]}...")
+        else:
+            logger.warning(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!")
+            print(f"[OCR] ⚠️ РЕЗУЛЬТАТ ПОРОЖНІЙ від рушія '{strategy_name}'!", flush=True)
+        
+        logger.info("[OCR] ===== ЗАВЕРШЕНО РОЗПІЗНАВАННЯ =====")
+    
+    def _log_recognition_error(self, error: Exception, elapsed: float) -> None:
+        """Логування помилки розпізнавання"""
+        error_msg = f"[OCR] Помилка в strategy.recognize() після {elapsed:.2f} секунд: {error}"
+        print(error_msg)
+        logger.error(error_msg)
+        import traceback
+        traceback_str = traceback.format_exc()
+        print(f"[OCR] Traceback: {traceback_str}")
+        logger.error(f"[OCR] Traceback: {traceback_str}")
+    
+    def _apply_llm_correction(self, text: str, language: str) -> str:
+        """Застосування LLM корекції до тексту"""
+        if self.use_llm_correction and self.llm_processor and text:
+            return self._apply_llm_validation(text, language)
+        if text:
+            return LLMPostProcessor.simple_correction(text)
+        return text
+    
+    def _apply_llm_validation(self, text: str, language: str) -> str:
+        """Застосування LLM валідації та виправлення"""
+        try:
+            lang_map = {
+                'eng': 'english',
+                'ukr': 'ukrainian',
+                'eng+ukr': 'ukrainian',
+                'ukr+eng': 'ukrainian'
+            }
+            lang_name = lang_map.get(language, 'english')
+            
+            validation_result = self.llm_processor.validate_and_correct(text, lang_name)
+            
+            if validation_result['corrected'] and validation_result['is_valid']:
+                text = validation_result['corrected']
+                logger.info(f"[OCR] LLM виправлення застосовано. Впевненість: {validation_result['confidence']:.2f}")
+                if validation_result['changes']:
+                    logger.info(f"[OCR] Зміни: {', '.join(validation_result['changes'])}")
+                return text
+            
+            text = LLMPostProcessor.simple_correction(text)
+            logger.warning("[OCR] LLM валідація не пройдена, використано просте виправлення")
+            return text
+        except Exception as e:
+            logger.warning(f"Помилка LLM пост-обробки: {e}")
+            return LLMPostProcessor.simple_correction(text)
+    
+    def _handle_recognition_error(self, error: Exception, image, language: str, 
+                                  preprocess: bool, split_into_words: bool) -> str:
+        """Обробка помилки розпізнавання з fallback на Tesseract"""
+        logger.error(f"[OCR] ✗ Помилка розпізнавання рушієм '{self.engine_name}': {error}")
+        import traceback
+        logger.error(f"[OCR] Traceback: {traceback.format_exc()}")
+        
+        if self.engine_name != 'tesseract':
+            return self._try_fallback_to_tesseract(image, language, preprocess, split_into_words)
+        
+        logger.error("[OCR] ✗ Всі спроби розпізнавання не вдалися")
+        return ""
+    
+    def _try_fallback_to_tesseract(self, image, language: str, preprocess: bool, 
+                                   split_into_words: bool) -> str:
+        """Спроба fallback на Tesseract"""
+        logger.warning(f"[OCR] ⚠️ СПРОБА FALLBACK НА TESSERACT (оригінальний рушій: {self.engine_name})")
+        try:
+            old_engine = self.engine_name
+            if self._set_strategy('tesseract'):
+                logger.warning(f"[OCR] ⚠️ FALLBACK: Використовується Tesseract замість {old_engine}")
+                fallback_result = self.recognize(image, language, preprocess, split_into_words=split_into_words)
+                logger.warning(f"[OCR] ⚠️ FALLBACK: Результат від Tesseract: {len(fallback_result)} символів")
+                return fallback_result
+        except Exception as fallback_error:
+            logger.error(f"[OCR] ✗ Fallback на Tesseract також не вдався: {fallback_error}")
+        
+        logger.error("[OCR] ✗ Всі спроби розпізнавання не вдалися")
+        return ""
     
     def switch_engine(self, engine: str) -> bool:
         """

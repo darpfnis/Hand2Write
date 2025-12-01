@@ -333,416 +333,432 @@ class PaddleOCRStrategy(OCRStrategy):
             raise RuntimeError("PaddleOCR недоступний")
         
         import cv2
-        
         ocr_instance = self._get_instance(language)
+        actual_lang = self._get_actual_language(language)
+        self._log_recognition_start(language, actual_lang)
         
-        # Логуємо, яка мова реально використовується
+        processed_image = self._prepare_image_for_paddleocr(image, language)
+        results = self._perform_ocr_recognition(ocr_instance, processed_image)
+        
+        if results is None:
+            return ""
+        
+        text_parts = self._parse_ocr_results(results, language)
+        result_text = ' '.join(text_parts).strip()
+        
+        if not result_text:
+            result_text = self._try_predict_fallback(ocr_instance, processed_image)
+        
+        if language == OCRLanguage.UKRAINIAN and result_text:
+            result_text = self._apply_ukrainian_postprocessing(result_text)
+        
+        self._log_final_result(result_text, results)
+        return result_text
+    
+    def _get_actual_language(self, language: OCRLanguage) -> str:
+        """Отримання фактичної мови для PaddleOCR"""
         lang_map = {
-            OCRLanguage.UKRAINIAN: 'ru',  # Використовуємо 'ru' для кращого розпізнавання кирилиці
+            OCRLanguage.UKRAINIAN: 'ru',
             OCRLanguage.ENGLISH: 'en',
             OCRLanguage.BOTH: 'en'
         }
-        actual_lang = lang_map[language]
+        return lang_map[language]
+    
+    def _log_recognition_start(self, language: OCRLanguage, actual_lang: str) -> None:
+        """Логування початку розпізнавання"""
         logger.info(f"[PaddleOCR-OCRManager] Початок розпізнавання, запитана мова: {language.value}, використовується: {actual_lang}")
         print(f"[PaddleOCR-OCRManager] Початок розпізнавання, запитана мова: {language.value}, використовується: {actual_lang}", flush=True)
+    
+    def _prepare_image_for_paddleocr(self, image: np.ndarray, language: OCRLanguage) -> np.ndarray:
+        """Підготовка зображення для PaddleOCR"""
+        import cv2
         
-        # Підготовка зображення (PaddleOCR працює з BGR)
         if image.dtype != np.uint8:
             image = image.astype(np.uint8)
         
         if len(image.shape) == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         
-        # Покращений препроцесинг для всіх мов (особливо для рукописного тексту)
-        # Збільшуємо розмір зображення, якщо воно маленьке (для кращого розпізнавання)
+        image = self._resize_image_if_needed(image)
+        image = self._enhance_image_contrast(image, language)
+        
+        logger.info("[PaddleOCR-OCRManager] Застосовано покращений препроцесинг для рукописного тексту")
+        print("[PaddleOCR-OCRManager] Застосовано покращений препроцесинг для рукописного тексту", flush=True)
+        return image
+    
+    def _resize_image_if_needed(self, image: np.ndarray) -> np.ndarray:
+        """Збільшення зображення, якщо воно занадто маленьке"""
+        import cv2
         height, width = image.shape[:2]
+        
         if height < 400 or width < 400:
-            scale_factor = max(400 / height, 400 / width, 2.0)  # Мінімум 2x збільшення
+            scale_factor = max(400 / height, 400 / width, 2.0)
             image = cv2.resize(image, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
             logger.info(f"[PaddleOCR-OCRManager] Збільшено зображення в {scale_factor:.1f} разів: {image.shape}")
             print(f"[PaddleOCR-OCRManager] Збільшено зображення в {scale_factor:.1f} разів", flush=True)
         
-        # Покращення контрасту для всіх мов
-        # Конвертуємо в grayscale для покращення контрасту
+        return image
+    
+    def _enhance_image_contrast(self, image: np.ndarray, language: OCRLanguage) -> np.ndarray:
+        """Покращення контрасту зображення"""
+        import cv2
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        # Застосовуємо адаптивну гістограму для покращення контрасту (більш агресивно для рукописного тексту)
-        # Різні налаштування для різних мов
+        
         if language == OCRLanguage.ENGLISH:
-            # Більш агресивна обробка для англійської мови
-            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            
-            # Більш сильне покращення різкості для англійської
-            kernel = np.array([[-1, -1, -1],
-                              [-1,  9, -1],
-                              [-1, -1, -1]])
-            sharpened = cv2.filter2D(enhanced, -1, kernel * 0.25)
-            
-            # Додаткова бінаризація для покращення контрасту
-            _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            enhanced = cv2.bitwise_and(sharpened, binary)
-            
-            logger.info("[PaddleOCR-OCRManager] Застосовано агресивний препроцесинг для англійської мови")
-            print("[PaddleOCR-OCRManager] Застосовано агресивний препроцесинг для англійської мови", flush=True)
+            enhanced = self._apply_aggressive_enhancement(gray)
         else:
-            # Стандартна обробка для інших мов
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            
-            # Покращення різкості
-            kernel = np.array([[-1, -1, -1],
-                              [-1,  9, -1],
-                              [-1, -1, -1]])
-            sharpened = cv2.filter2D(enhanced, -1, kernel * 0.15)
-            enhanced = sharpened
+            enhanced = self._apply_standard_enhancement(gray)
         
-        # Конвертуємо назад в BGR
-        image = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+        return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+    
+    def _apply_aggressive_enhancement(self, gray: np.ndarray) -> np.ndarray:
+        """Агресивне покращення для англійської мови"""
+        import cv2
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
         
-        logger.info("[PaddleOCR-OCRManager] Застосовано покращений препроцесинг для рукописного тексту")
-        print("[PaddleOCR-OCRManager] Застосовано покращений препроцесинг для рукописного тексту", flush=True)
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        sharpened = cv2.filter2D(enhanced, -1, kernel * 0.25)
         
-        # Розпізнавання
-        # PaddleOCR v3.3.2 не підтримує параметр cls
+        _, binary = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        enhanced = cv2.bitwise_and(sharpened, binary)
+        
+        logger.info("[PaddleOCR-OCRManager] Застосовано агресивний препроцесинг для англійської мови")
+        print("[PaddleOCR-OCRManager] Застосовано агресивний препроцесинг для англійської мови", flush=True)
+        return enhanced
+    
+    def _apply_standard_enhancement(self, gray: np.ndarray) -> np.ndarray:
+        """Стандартне покращення для інших мов"""
+        import cv2
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        sharpened = cv2.filter2D(enhanced, -1, kernel * 0.15)
+        return sharpened
+    
+    def _perform_ocr_recognition(self, ocr_instance, image: np.ndarray):
+        """Виконання OCR розпізнавання"""
         try:
             results = ocr_instance.ocr(image)
-            logger.info(
-                "[PaddleOCR-OCRManager] ocr() завершено, тип результату: %s",
-                type(results),
-            )
-            print(
-                f"[PaddleOCR-OCRManager] ocr() завершено, тип результату: {type(results)}",
-                flush=True,
-            )
+            logger.info("[PaddleOCR-OCRManager] ocr() завершено, тип результату: %s", type(results))
+            print(f"[PaddleOCR-OCRManager] ocr() завершено, тип результату: {type(results)}", flush=True)
+            return results
         except Exception as e:
             logger.error(f"[PaddleOCR-OCRManager] Помилка виклику ocr(): {e}", exc_info=True)
             print(f"[PaddleOCR-OCRManager] ✗ Помилка виклику ocr(): {e}", flush=True)
-            # Спробуємо predict() як fallback
-            if hasattr(ocr_instance, 'predict'):
-                try:
-                    logger.info("[PaddleOCR-OCRManager] Спроба використати predict() як fallback...")
-                    print("[PaddleOCR-OCRManager] Спроба використати predict() як fallback...", flush=True)
-                    results = ocr_instance.predict(image)
-                    logger.info(f"[PaddleOCR-OCRManager] predict() завершено, тип результату: {type(results)}")
-                    print(f"[PaddleOCR-OCRManager] predict() завершено, тип результату: {type(results)}", flush=True)
-                except Exception as e2:
-                    logger.error(f"[PaddleOCR-OCRManager] Помилка predict(): {e2}", exc_info=True)
-                    print(f"[PaddleOCR-OCRManager] ✗ Помилка predict(): {e2}", flush=True)
-                    return ""
-            else:
-                return ""
+            return self._try_predict_fallback_on_error(ocr_instance, image)
+    
+    def _try_predict_fallback_on_error(self, ocr_instance, image: np.ndarray):
+        """Спроба використати predict() як fallback при помилці ocr()"""
+        if not hasattr(ocr_instance, 'predict'):
+            return None
         
-        # Детальна діагностика результату
+        try:
+            logger.info("[PaddleOCR-OCRManager] Спроба використати predict() як fallback...")
+            print("[PaddleOCR-OCRManager] Спроба використати predict() як fallback...", flush=True)
+            results = ocr_instance.predict(image)
+            logger.info(f"[PaddleOCR-OCRManager] predict() завершено, тип результату: {type(results)}")
+            print(f"[PaddleOCR-OCRManager] predict() завершено, тип результату: {type(results)}", flush=True)
+            return results
+        except Exception as e2:
+            logger.error(f"[PaddleOCR-OCRManager] Помилка predict(): {e2}", exc_info=True)
+            print(f"[PaddleOCR-OCRManager] ✗ Помилка predict(): {e2}", flush=True)
+            return None
+    
+    def _parse_ocr_results(self, results, language: OCRLanguage) -> list[str]:
+        """Парсинг результатів OCR"""
+        if not isinstance(results, (list, tuple)) or len(results) == 0:
+            return self._handle_empty_or_invalid_results(results)
+        
+        first_item = results[0]
+        logger.info(f"[PaddleOCR-OCRManager] results[0] тип: {type(first_item)}")
+        print(f"[PaddleOCR-OCRManager] results[0] тип: {type(first_item)}", flush=True)
+        
+        rec_texts, rec_scores = self._extract_rec_texts_and_scores(first_item)
+        
+        if rec_texts is not None:
+            return self._process_rec_texts(rec_texts, rec_scores, language)
+        
+        if isinstance(first_item, (list, tuple)):
+            return self._process_legacy_format(first_item)
+        
+        return self._handle_unknown_result_type(results)
+    
+    def _handle_empty_or_invalid_results(self, results) -> list[str]:
+        """Обробка порожніх або невалідних результатів"""
         if results is None:
             logger.warning("[PaddleOCR-OCRManager] Результат None")
             print("[PaddleOCR-OCRManager] ⚠️ Результат None", flush=True)
-            return ""
+            return []
         
+        if isinstance(results, (list, tuple)) and len(results) == 0:
+            logger.warning("[PaddleOCR-OCRManager] Результат: порожній список")
+            print("[PaddleOCR-OCRManager] ⚠️ Результат: порожній список", flush=True)
+            return []
+        
+        return []
+    
+    def _extract_rec_texts_and_scores(self, first_item):
+        """Витягнення rec_texts та rec_scores з результату"""
+        if hasattr(first_item, 'rec_texts'):
+            rec_texts = first_item.rec_texts
+            rec_scores = getattr(first_item, 'rec_scores', None)
+            logger.info(f"[PaddleOCR-OCRManager] Знайдено rec_texts через атрибут: {rec_texts}")
+            print(f"[PaddleOCR-OCRManager] Знайдено rec_texts через атрибут: {rec_texts}", flush=True)
+            return rec_texts, rec_scores
+        
+        if isinstance(first_item, dict) and 'rec_texts' in first_item:
+            rec_texts = first_item['rec_texts']
+            rec_scores = first_item.get('rec_scores', None)
+            logger.info(f"[PaddleOCR-OCRManager] Знайдено rec_texts через словник: {rec_texts}")
+            print(f"[PaddleOCR-OCRManager] Знайдено rec_texts через словник: {rec_texts}", flush=True)
+            logger.info(f"[PaddleOCR-OCRManager] rec_scores тип: {type(rec_scores)}, значення: {rec_scores}")
+            print(f"[PaddleOCR-OCRManager] rec_scores тип: {type(rec_scores)}, значення: {rec_scores}", flush=True)
+            return rec_texts, rec_scores
+        
+        return None, None
+    
+    def _process_rec_texts(self, rec_texts, rec_scores, language: OCRLanguage) -> list[str]:
+        """Обробка rec_texts з фільтрацією за впевненістю"""
+        logger.info(f"[PaddleOCR-OCRManager] Обробка rec_texts: {rec_texts}")
+        print(f"[PaddleOCR-OCRManager] Обробка rec_texts: {rec_texts}", flush=True)
+        
+        if isinstance(rec_texts, str):
+            text_str = rec_texts.strip()
+            if text_str:
+                logger.info(f"[PaddleOCR-OCRManager] Додано текст (рядок): '{text_str}'")
+                print(f"[PaddleOCR-OCRManager] Додано текст (рядок): '{text_str}'", flush=True)
+                return [text_str]
+            return []
+        
+        if not isinstance(rec_texts, (list, tuple)):
+            return []
+        
+        min_confidence = 0.3 if language == OCRLanguage.ENGLISH else 0.4
         text_parts = []
         
-        if isinstance(results, (list, tuple)):
-            logger.info(f"[PaddleOCR-OCRManager] Результат: список/кортеж, довжина: {len(results)}")
-            print(f"[PaddleOCR-OCRManager] Результат: список/кортеж, довжина: {len(results)}", flush=True)
+        for idx, text_item in enumerate(rec_texts):
+            text_str = str(text_item).strip() if text_item else ""
+            if not text_str:
+                logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено порожній результат (idx={idx})")
+                print(f"[PaddleOCR-OCRManager] ✗ Пропущено порожній результат (idx={idx})", flush=True)
+                continue
             
-            if len(results) == 0:
-                logger.warning("[PaddleOCR-OCRManager] Результат: порожній список")
-                print("[PaddleOCR-OCRManager] ⚠️ Результат: порожній список", flush=True)
-                return ""
+            if not self._should_include_text_item(text_str, rec_scores, idx, min_confidence):
+                continue
             
-            first_item = results[0]
-            logger.info(f"[PaddleOCR-OCRManager] results[0] тип: {type(first_item)}")
-            print(f"[PaddleOCR-OCRManager] results[0] тип: {type(first_item)}", flush=True)
-            
-            # Перевіряємо, чи це OCRResult об'єкт або словник з rec_texts
-            rec_texts = None
-            rec_scores = None
-            
-            # Спробуємо отримати rec_texts з об'єкта
-            if hasattr(first_item, 'rec_texts'):
-                rec_texts = first_item.rec_texts
-                rec_scores = getattr(first_item, 'rec_scores', None)
-                logger.info(f"[PaddleOCR-OCRManager] Знайдено rec_texts через атрибут: {rec_texts}")
-                print(f"[PaddleOCR-OCRManager] Знайдено rec_texts через атрибут: {rec_texts}", flush=True)
-            elif isinstance(first_item, dict) and 'rec_texts' in first_item:
-                rec_texts = first_item['rec_texts']
-                rec_scores = first_item.get('rec_scores', None)
-                logger.info(f"[PaddleOCR-OCRManager] Знайдено rec_texts через словник: {rec_texts}")
-                print(f"[PaddleOCR-OCRManager] Знайдено rec_texts через словник: {rec_texts}", flush=True)
-                logger.info(f"[PaddleOCR-OCRManager] rec_scores тип: {type(rec_scores)}, значення: {rec_scores}")
-                print(f"[PaddleOCR-OCRManager] rec_scores тип: {type(rec_scores)}, значення: {rec_scores}", flush=True)
-            elif isinstance(first_item, (list, tuple)):
-                # Старий формат: список списків [[[bbox], (text, confidence)], ...]
-                logger.info("[PaddleOCR-OCRManager] Старий формат: список списків")
-                print("[PaddleOCR-OCRManager] Старий формат: список списків", flush=True)
-                try:
-                    for idx, line in enumerate(first_item):
-                        logger.debug(
-                            "[PaddleOCR-OCRManager] Обробка рядка %s: тип=%s",
-                            idx,
-                            type(line),
-                        )
-                        if isinstance(line, (list, tuple)) and len(line) >= 2:
-                            text_item = line[1]
-                            if (
-                                isinstance(text_item, (list, tuple))
-                                and len(text_item) >= 1
-                            ):
-                                text_str = str(text_item[0]).strip()
-                                if text_str:
-                                    text_parts.append(text_str)
-                                    logger.debug(
-                                        "[PaddleOCR-OCRManager] Додано текст: '%s'",
-                                        text_str,
-                                    )
-                            elif isinstance(text_item, str):
-                                text_str = text_item.strip()
-                                if text_str:
-                                    text_parts.append(text_str)
-                                    logger.debug(
-                                        "[PaddleOCR-OCRManager] Додано текст (рядок): '%s'",
-                                        text_str,
-                                    )
-                except Exception as e:
-                    logger.error(
-                        "[PaddleOCR-OCRManager] Помилка обробки старого формату: %s",
-                        e,
-                        exc_info=True,
-                    )
-                    print(
-                        f"[PaddleOCR-OCRManager] ✗ Помилка обробки старого формату: {e}",
-                        flush=True,
-                    )
-            
-            # Обробка rec_texts з фільтрацією за впевненістю
-            if rec_texts is not None:
-                logger.info(f"[PaddleOCR-OCRManager] Обробка rec_texts: {rec_texts}")
-                print(f"[PaddleOCR-OCRManager] Обробка rec_texts: {rec_texts}", flush=True)
-                if isinstance(rec_texts, (list, tuple)):
-                    # Мінімальна впевненість для прийняття результату
-                    # Для англійської мови знижуємо поріг (рукописний текст має нижчу впевненість)
-                    # Для інших мов залишаємо вищий поріг
-                    if language == OCRLanguage.ENGLISH:
-                        min_confidence = 0.3  # Нижчий поріг для англійської (рукописний текст)
-                    else:
-                        min_confidence = 0.4  # Вищий поріг для інших мов
-                    
-                    for idx, text_item in enumerate(rec_texts):
-                        # Перевіряємо, чи текст не порожній
-                        text_str = str(text_item).strip() if text_item else ""
-                        
-                        # Фільтруємо порожні результати
-                        if not text_str:
-                            logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено порожній результат (idx={idx})")
-                            print(f"[PaddleOCR-OCRManager] ✗ Пропущено порожній результат (idx={idx})", flush=True)
-                            continue
-                        
-                        # Перевіряємо впевненість, якщо доступна
-                        score = None
-                        if rec_scores and idx < len(rec_scores):
-                            score = rec_scores[idx]
-                            
-                            # Фільтруємо результати з нульовою або дуже низькою впевненістю
-                            if isinstance(score, (int, float)):
-                                if score <= 0.0:
-                                    logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (нульова впевненість {score:.3f})")
-                                    print(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (нульова впевненість {score:.3f})", flush=True)
-                                    continue
-                                
-                                logger.info(f"[PaddleOCR-OCRManager] Текст '{text_str}' з впевненістю {score:.3f} (поріг: {min_confidence})")
-                                print(f"[PaddleOCR-OCRManager] Текст '{text_str}' з впевненістю {score:.3f} (поріг: {min_confidence})", flush=True)
-                                
-                                # Фільтруємо результати з низькою впевненістю
-                                if score < min_confidence:
-                                    logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (низька впевненість {score:.3f} < {min_confidence})")
-                                    print(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (низька впевненість {score:.3f} < {min_confidence})", flush=True)
-                                    continue
-                                else:
-                                    logger.info(f"[PaddleOCR-OCRManager] ✓ Прийнято '{text_str}' (впевненість {score:.3f} >= {min_confidence})")
-                                    print(f"[PaddleOCR-OCRManager] ✓ Прийнято '{text_str}' (впевненість {score:.3f} >= {min_confidence})", flush=True)
-                            else:
-                                # Якщо впевненість не число, але текст є, додаємо з попередженням
-                                logger.warning(f"[PaddleOCR-OCRManager] ⚠️ Впевненість не число ({type(score)}) для '{text_str}', але додаємо")
-                                print(f"[PaddleOCR-OCRManager] ⚠️ Впевненість не число для '{text_str}', але додаємо", flush=True)
-                        else:
-                            # Якщо впевненість недоступна, але текст є, додаємо з попередженням
-                            logger.warning(f"[PaddleOCR-OCRManager] ⚠️ Впевненість недоступна для '{text_str}' (idx={idx}, rec_scores={rec_scores is not None})")
-                            print(f"[PaddleOCR-OCRManager] ⚠️ Впевненість недоступна для '{text_str}'", flush=True)
-                        
-                        text_parts.append(text_str)
-                elif isinstance(rec_texts, str):
-                    text_str = rec_texts.strip()
-                    if text_str:
-                        text_parts.append(text_str)
-                        logger.info(f"[PaddleOCR-OCRManager] Додано текст (рядок): '{text_str}'")
-                        print(f"[PaddleOCR-OCRManager] Додано текст (рядок): '{text_str}'", flush=True)
-        else:
-            logger.warning(f"[PaddleOCR-OCRManager] Невідомий тип результату: {type(results)}")
-            print(f"[PaddleOCR-OCRManager] ⚠️ Невідомий тип результату: {type(results)}", flush=True)
-            # Спробуємо обробити як рядок
-            try:
-                text = str(results).strip()
-                if text and len(text) > 0:
-                    logger.info(f"[PaddleOCR-OCRManager] Конвертовано в рядок: {text[:100]}...")
-                    return text
-            except Exception:
-                pass
+            text_parts.append(text_str)
+        
+        return text_parts
+    
+    def _should_include_text_item(self, text_str: str, rec_scores, idx: int, min_confidence: float) -> bool:
+        """Визначення, чи слід включити текстовий елемент"""
+        if not rec_scores or idx >= len(rec_scores):
+            logger.warning(f"[PaddleOCR-OCRManager] ⚠️ Впевненість недоступна для '{text_str}' (idx={idx}, rec_scores={rec_scores is not None})")
+            print(f"[PaddleOCR-OCRManager] ⚠️ Впевненість недоступна для '{text_str}'", flush=True)
+            return True
+        
+        score = rec_scores[idx]
+        if not isinstance(score, (int, float)):
+            logger.warning(f"[PaddleOCR-OCRManager] ⚠️ Впевненість не число ({type(score)}) для '{text_str}', але додаємо")
+            print(f"[PaddleOCR-OCRManager] ⚠️ Впевненість не число для '{text_str}', але додаємо", flush=True)
+            return True
+        
+        if score <= 0.0:
+            logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (нульова впевненість {score:.3f})")
+            print(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (нульова впевненість {score:.3f})", flush=True)
+            return False
+        
+        logger.info(f"[PaddleOCR-OCRManager] Текст '{text_str}' з впевненістю {score:.3f} (поріг: {min_confidence})")
+        print(f"[PaddleOCR-OCRManager] Текст '{text_str}' з впевненістю {score:.3f} (поріг: {min_confidence})", flush=True)
+        
+        if score < min_confidence:
+            logger.warning(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (низька впевненість {score:.3f} < {min_confidence})")
+            print(f"[PaddleOCR-OCRManager] ✗ Пропущено '{text_str}' (низька впевненість {score:.3f} < {min_confidence})", flush=True)
+            return False
+        
+        logger.info(f"[PaddleOCR-OCRManager] ✓ Прийнято '{text_str}' (впевненість {score:.3f} >= {min_confidence})")
+        print(f"[PaddleOCR-OCRManager] ✓ Прийнято '{text_str}' (впевненість {score:.3f} >= {min_confidence})", flush=True)
+        return True
+    
+    def _process_legacy_format(self, first_item: list) -> list[str]:
+        """Обробка старого формату результатів"""
+        logger.info("[PaddleOCR-OCRManager] Старий формат: список списків")
+        print("[PaddleOCR-OCRManager] Старий формат: список списків", flush=True)
+        text_parts = []
+        
+        try:
+            for idx, line in enumerate(first_item):
+                logger.debug("[PaddleOCR-OCRManager] Обробка рядка %s: тип=%s", idx, type(line))
+                if not isinstance(line, (list, tuple)) or len(line) < 2:
+                    continue
+                
+                text_item = line[1]
+                text_str = self._extract_text_from_legacy_item(text_item)
+                if text_str:
+                    text_parts.append(text_str)
+        except Exception as e:
+            logger.error("[PaddleOCR-OCRManager] Помилка обробки старого формату: %s", e, exc_info=True)
+            print(f"[PaddleOCR-OCRManager] ✗ Помилка обробки старого формату: {e}", flush=True)
+        
+        return text_parts
+    
+    def _extract_text_from_legacy_item(self, text_item) -> str:
+        """Витягнення тексту з елемента старого формату"""
+        if isinstance(text_item, (list, tuple)) and len(text_item) >= 1:
+            text_str = str(text_item[0]).strip()
+            if text_str:
+                logger.debug("[PaddleOCR-OCRManager] Додано текст: '%s'", text_str)
+                return text_str
+        elif isinstance(text_item, str):
+            text_str = text_item.strip()
+            if text_str:
+                logger.debug("[PaddleOCR-OCRManager] Додано текст (рядок): '%s'", text_str)
+                return text_str
+        return ""
+    
+    def _handle_unknown_result_type(self, results) -> list[str]:
+        """Обробка невідомого типу результату"""
+        logger.warning(f"[PaddleOCR-OCRManager] Невідомий тип результату: {type(results)}")
+        print(f"[PaddleOCR-OCRManager] ⚠️ Невідомий тип результату: {type(results)}", flush=True)
+        
+        try:
+            text = str(results).strip()
+            if text and len(text) > 0:
+                logger.info(f"[PaddleOCR-OCRManager] Конвертовано в рядок: {text[:100]}...")
+                return [text]
+        except Exception:
+            pass
+        
+        return []
+    
+    def _try_predict_fallback(self, ocr_instance, image: np.ndarray) -> str:
+        """Спроба використати predict() як fallback при порожньому результаті"""
+        if not hasattr(ocr_instance, 'predict'):
             return ""
         
-        result_text = ' '.join(text_parts).strip()
-        
-        # Якщо результат порожній, спробуємо predict() як fallback
-        if not result_text and hasattr(ocr_instance, 'predict'):
-            try:
-                logger.info("[PaddleOCR-OCRManager] ocr() повернув порожній результат, спроба predict() як fallback...")
-                print("[PaddleOCR-OCRManager] ocr() повернув порожній результат, спроба predict() як fallback...", flush=True)
-                # Використовуємо predict() з параметрами для кращого розпізнавання рукописного тексту
-                fallback_results = ocr_instance.predict(
-                    image,
-                    use_doc_orientation_classify=False,
-                    use_doc_unwarping=False,
-                    use_textline_orientation=False,
-                    text_det_thresh=0.2,
-                    text_det_box_thresh=0.3,
-                    text_rec_score_thresh=0.1
-                )
-                logger.info(f"[PaddleOCR-OCRManager] predict() fallback завершено, тип: {type(fallback_results)}")
-                print("[PaddleOCR-OCRManager] predict() fallback завершено", flush=True)
-                
-                # Обробляємо результат predict() так само, як ocr()
-                if isinstance(fallback_results, (list, tuple)) and len(fallback_results) > 0:
-                    fallback_item = fallback_results[0]
-                    if hasattr(fallback_item, 'rec_texts'):
-                        fallback_texts = fallback_item.rec_texts
-                    elif isinstance(fallback_item, dict) and 'rec_texts' in fallback_item:
-                        fallback_texts = fallback_item['rec_texts']
-                    else:
-                        fallback_texts = None
-                    
-                    if fallback_texts and isinstance(fallback_texts, (list, tuple)) and len(fallback_texts) > 0:
-                        result_text = ' '.join(str(t).strip() for t in fallback_texts if t and str(t).strip()).strip()
-                        logger.info(f"[PaddleOCR-OCRManager] predict() fallback дав результат: '{result_text}'")
-                        print(f"[PaddleOCR-OCRManager] predict() fallback дав результат: '{result_text}'", flush=True)
-            except Exception as e:
-                logger.warning(f"[PaddleOCR-OCRManager] predict() fallback помилка: {e}")
-                print(f"[PaddleOCR-OCRManager] predict() fallback помилка: {e}", flush=True)
-        
-        # Пост-обробка для української мови: виправлення помилок змішування кирилиці та латиниці
-        # PaddleOCR часто плутає схожі літери: і/I, в/B, р/p, о/O, а/A, е/E, т/T, н/H, у/Y, х/X, с/C, м/M
-        # ВАЖЛИВО: Модель 'ru' може розпізнавати український текст як латинський
-        if language == OCRLanguage.UKRAINIAN and result_text:
-            logger.info("[PaddleOCR-OCRManager] Застосовано пост-обробку для української мови")
-            print("[PaddleOCR-OCRManager] Застосовано пост-обробку для української мови", flush=True)
+        try:
+            logger.info("[PaddleOCR-OCRManager] ocr() повернув порожній результат, спроба predict() як fallback...")
+            print("[PaddleOCR-OCRManager] ocr() повернув порожній результат, спроба predict() як fallback...", flush=True)
             
-            # Перевіряємо, чи є кириличні літери в тексті
-            has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in result_text)
+            fallback_results = ocr_instance.predict(
+                image,
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                text_det_thresh=0.2,
+                text_det_box_thresh=0.3,
+                text_rec_score_thresh=0.1
+            )
             
-            # Перевіряємо, чи текст містить латинські літери (можлива помилка розпізнавання)
-            # Для української мови завжди застосовуємо пост-обробку, якщо є латинські літери
-            has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in result_text)
+            logger.info(f"[PaddleOCR-OCRManager] predict() fallback завершено, тип: {type(fallback_results)}")
+            print("[PaddleOCR-OCRManager] predict() fallback завершено", flush=True)
             
-            # Застосовуємо пост-обробку завжди для української мови, якщо є латинські літери
-            # або якщо немає кирилиці (можлива помилка розпізнавання)
-            if has_latin or not has_cyrillic:
-                logger.info(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку")
-                print(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку", flush=True)
-                # Словник замін: латинська -> кирилична (тільки для схожих літер)
-                # PaddleOCR часто плутає ці літери в українському тексті
-                # ВАЖЛИВО: Зберігаємо українські особливі символи (і, ї, є) - вони вже правильні
-                # Використовуємо контекстно-залежні заміни для кращого виправлення
-                
-                # Спочатку виправляємо очевидні помилки в контексті українських слів
-                corrected_text = result_text
-                
-                # Спеціальні випадки для поширених помилок
-                # "pubi" -> "рив" (в контексті "Привіт")
-                if 'pubi' in corrected_text.lower():
-                    corrected_text = corrected_text.replace('pubi', 'рив')
-                    corrected_text = corrected_text.replace('Pubi', 'Рив')
-                    corrected_text = corrected_text.replace('PUBI', 'РИВ')
-                
-                # "Tect" -> "Тест" (поширена помилка)
-                if corrected_text.lower() == 'tect':
-                    corrected_text = 'Тест'
-                    logger.info("[PaddleOCR-OCRManager] Спеціальна заміна: 'Tect' -> 'Тест'")
-                    print("[PaddleOCR-OCRManager] Спеціальна заміна: 'Tect' -> 'Тест'", flush=True)
-                
-                # Видаляємо спеціальні символи, які не мають сенсу в тексті (якщо вони не частина слова)
-                # Наприклад, '&' в "C&iT" -> "Світ"
-                if '&' in corrected_text:
-                    # Замінюємо '&' на порожній рядок, якщо він між літерами
-                    corrected_text = corrected_text.replace('&', '')
-                    logger.info("[PaddleOCR-OCRManager] Видалено спеціальний символ '&'")
-                    print("[PaddleOCR-OCRManager] Видалено спеціальний символ '&'", flush=True)
-                
-                # Виправлення цифр, які часто плутаються з літерами
-                # "6" часто плутається з "б" (особливо в рукописному тексті)
-                if '6' in corrected_text:
-                    # Замінюємо "6" на "б" в контексті українських слів
-                    corrected_text = corrected_text.replace('6', 'б')
-                    logger.info("[PaddleOCR-OCRManager] Виправлено '6' -> 'б'")
-                    print("[PaddleOCR-OCRManager] Виправлено '6' -> 'б'", flush=True)
-                
-                # "0" часто плутається з "о" (особливо в рукописному тексті)
-                if '0' in corrected_text:
-                    # Замінюємо "0" на "о" в контексті українських слів
-                    corrected_text = corrected_text.replace('0', 'о')
-                    logger.info("[PaddleOCR-OCRManager] Виправлено '0' -> 'о'")
-                    print("[PaddleOCR-OCRManager] Виправлено '0' -> 'о'", flush=True)
-                
-                # Загальні заміни латинських літер на кириличні
-                # Важливо: замінюємо в правильному порядку (спочатку великі, потім малі)
-                replacements = [
-                    ('T', 'Т'),  # латинська T -> кирилична Т (важливо для "Тест" -> "Tecr", "Tect")
-                    ('t', 'т'),  # латинська t -> кирилична т (важливо для "Tect" -> "Тест")
-                    ('E', 'Е'),  # латинська E -> кирилична Е
-                    ('e', 'е'),  # латинська e -> кирилична е (для "Tect" -> "Тест", а не 'в')
-                    ('C', 'С'),  # латинська C -> кирилична С (важливо для "CeiT" -> "Світ")
-                    ('c', 'с'),  # латинська c -> кирилична с
-                    ('r', 'р'),  # латинська r -> кирилична р
-                    ('I', 'І'),  # латинська I -> українська І (не і!)
-                    ('i', 'і'),  # латинська i -> українська і (важливо для "CeiT" -> "Світ")
-                    ('n', 'н'),  # латинська n -> кирилична н (важливо для "ind" -> "інд")
-                    ('d', 'д'),  # латинська d -> кирилична д (важливо для "ind" -> "інд")
-                    ('B', 'В'),  # латинська B -> кирилична В
-                    ('p', 'р'),  # латинська p -> кирилична р
-                    ('u', 'в'),  # латинська u -> кирилична в
-                    ('O', 'О'),  # латинська O -> кирилична О
-                    ('o', 'о'),  # латинська o -> кирилична о
-                    ('A', 'А'),  # латинська A -> кирилична А
-                    ('a', 'а'),  # латинська a -> кирилична а
-                    ('H', 'Н'),  # латинська H -> кирилична Н
-                    ('Y', 'У'),  # латинська Y -> кирилична У
-                    ('X', 'Х'),  # латинська X -> кирилична Х
-                    ('M', 'М'),  # латинська M -> кирилична М
-                    ('P', 'Р'),  # латинська P -> кирилична Р
-                    ('K', 'К'),  # латинська K -> кирилична К
-                    ('k', 'к'),  # латинська k -> кирилична к
-                    ('v', 'в'),  # латинська v -> кирилична в
-                    ('V', 'В'),  # латинська V -> кирилична В
-                    ('S', 'С'),  # латинська S -> кирилична С (може бути помилка)
-                    ('s', 'с'),  # латинська s -> кирилична с
-                    ('L', 'Л'),  # латинська L -> кирилична Л
-                    ('l', 'л'),  # латинська l -> кирилична л
-                    ('g', 'г'),  # латинська g -> кирилична г (важливо для "gnd" -> "гнд")
-                    ('G', 'Г'),  # латинська G -> кирилична Г
-                    ('f', 'в'),  # латинська f -> кирилична в (важливо для "Пpufi" -> "Привіт")
-                    ('F', 'В'),  # латинська F -> кирилична В
-                    ('N', 'Л'),  # латинська N -> кирилична Л (важливо для "Nю60В" -> "Любов")
-                    ('n', 'л'),  # латинська n -> кирилична л (якщо ще не замінено вище)
-                ]
-                
-                # Застосовуємо заміни для всіх латинських літер
-                for latin, cyrillic in replacements:
-                    if latin in corrected_text:
-                        corrected_text = corrected_text.replace(latin, cyrillic)
-                
-                if corrected_text != result_text:
-                    logger.info(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'")
-                    print(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'", flush=True)
-                    result_text = corrected_text
+            return self._extract_text_from_fallback_results(fallback_results)
+        except Exception as e:
+            logger.warning(f"[PaddleOCR-OCRManager] predict() fallback помилка: {e}")
+            print(f"[PaddleOCR-OCRManager] predict() fallback помилка: {e}", flush=True)
+            return ""
+    
+    def _extract_text_from_fallback_results(self, fallback_results) -> str:
+        """Витягнення тексту з результатів fallback"""
+        if not isinstance(fallback_results, (list, tuple)) or len(fallback_results) == 0:
+            return ""
         
+        fallback_item = fallback_results[0]
+        fallback_texts = None
+        
+        if hasattr(fallback_item, 'rec_texts'):
+            fallback_texts = fallback_item.rec_texts
+        elif isinstance(fallback_item, dict) and 'rec_texts' in fallback_item:
+            fallback_texts = fallback_item['rec_texts']
+        
+        if fallback_texts and isinstance(fallback_texts, (list, tuple)) and len(fallback_texts) > 0:
+            result_text = ' '.join(str(t).strip() for t in fallback_texts if t and str(t).strip()).strip()
+            logger.info(f"[PaddleOCR-OCRManager] predict() fallback дав результат: '{result_text}'")
+            print(f"[PaddleOCR-OCRManager] predict() fallback дав результат: '{result_text}'", flush=True)
+            return result_text
+        
+        return ""
+    
+    def _apply_ukrainian_postprocessing(self, result_text: str) -> str:
+        """Пост-обробка для української мови"""
+        logger.info("[PaddleOCR-OCRManager] Застосовано пост-обробку для української мови")
+        print("[PaddleOCR-OCRManager] Застосовано пост-обробку для української мови", flush=True)
+        
+        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in result_text)
+        has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in result_text)
+        
+        if not (has_latin or not has_cyrillic):
+            return result_text
+        
+        logger.info(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку")
+        print(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку", flush=True)
+        
+        corrected_text = self._apply_special_corrections(result_text)
+        corrected_text = self._apply_latin_to_cyrillic_replacements(corrected_text)
+        
+        if corrected_text != result_text:
+            logger.info(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'")
+            print(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'", flush=True)
+            return corrected_text
+        
+        return result_text
+    
+    def _apply_special_corrections(self, text: str) -> str:
+        """Застосування спеціальних виправлень"""
+        corrected = text
+        
+        if 'pubi' in corrected.lower():
+            corrected = corrected.replace('pubi', 'рив')
+            corrected = corrected.replace('Pubi', 'Рив')
+            corrected = corrected.replace('PUBI', 'РИВ')
+        
+        if corrected.lower() == 'tect':
+            corrected = 'Тест'
+            logger.info("[PaddleOCR-OCRManager] Спеціальна заміна: 'Tect' -> 'Тест'")
+            print("[PaddleOCR-OCRManager] Спеціальна заміна: 'Tect' -> 'Тест'", flush=True)
+        
+        if '&' in corrected:
+            corrected = corrected.replace('&', '')
+            logger.info("[PaddleOCR-OCRManager] Видалено спеціальний символ '&'")
+            print("[PaddleOCR-OCRManager] Видалено спеціальний символ '&'", flush=True)
+        
+        if '6' in corrected:
+            corrected = corrected.replace('6', 'б')
+            logger.info("[PaddleOCR-OCRManager] Виправлено '6' -> 'б'")
+            print("[PaddleOCR-OCRManager] Виправлено '6' -> 'б'", flush=True)
+        
+        if '0' in corrected:
+            corrected = corrected.replace('0', 'о')
+            logger.info("[PaddleOCR-OCRManager] Виправлено '0' -> 'о'")
+            print("[PaddleOCR-OCRManager] Виправлено '0' -> 'о'", flush=True)
+        
+        return corrected
+    
+    def _apply_latin_to_cyrillic_replacements(self, text: str) -> str:
+        """Застосування замін латинських літер на кириличні"""
+        replacements = [
+            ('T', 'Т'), ('t', 'т'), ('E', 'Е'), ('e', 'е'), ('C', 'С'), ('c', 'с'),
+            ('r', 'р'), ('I', 'І'), ('i', 'і'), ('n', 'н'), ('d', 'д'), ('B', 'В'),
+            ('p', 'р'), ('u', 'в'), ('O', 'О'), ('o', 'о'), ('A', 'А'), ('a', 'а'),
+            ('H', 'Н'), ('Y', 'У'), ('X', 'Х'), ('M', 'М'), ('P', 'Р'), ('K', 'К'),
+            ('k', 'к'), ('v', 'в'), ('V', 'В'), ('S', 'С'), ('s', 'с'), ('L', 'Л'),
+            ('l', 'л'), ('g', 'г'), ('G', 'Г'), ('f', 'в'), ('F', 'В'), ('N', 'Л'),
+        ]
+        
+        for latin, cyrillic in replacements:
+            if latin in text:
+                text = text.replace(latin, cyrillic)
+        
+        return text
+    
+    def _log_final_result(self, result_text: str, results) -> None:
+        """Логування фінального результату"""
         logger.info(f"[PaddleOCR-OCRManager] Фінальний результат: {len(result_text)} символів")
         print(f"[PaddleOCR-OCRManager] Фінальний результат: {len(result_text)} символів", flush=True)
+        
         if result_text:
             logger.info(f"[PaddleOCR-OCRManager] Перші 100 символів: {result_text[:100]}...")
             print(f"[PaddleOCR-OCRManager] Перші 100 символів: {result_text[:100]}...", flush=True)
@@ -750,8 +766,6 @@ class PaddleOCRStrategy(OCRStrategy):
             logger.warning("[PaddleOCR-OCRManager] ⚠️ ФІНАЛЬНИЙ РЕЗУЛЬТАТ ПОРОЖНІЙ!")
             print("[PaddleOCR-OCRManager] ⚠️ ФІНАЛЬНИЙ РЕЗУЛЬТАТ ПОРОЖНІЙ!", flush=True)
             print(f"[PaddleOCR-OCRManager] Повний результат для діагностики: {results}", flush=True)
-        
-        return result_text
 
 
 class OCRManager:

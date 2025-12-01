@@ -190,270 +190,130 @@ class RecognitionWorker(QThread):
             engine = list(results.keys())[0]
             return results[engine], engine
         
-        # Якщо всі результати від одного рушія - повертаємо перший
         if len(set(results.keys())) == 1:
             engine = list(results.keys())[0]
             logger.info(f"[RecognitionWorker] Всі результати від одного рушія ({engine.value}), пропускаємо ШІ")
             print(f"[RecognitionWorker] Всі результати від одного рушія ({engine.value}), пропускаємо ШІ", flush=True)
             return results[engine], engine
         
-        # Фільтрація результатів перед відправкою в ШІ
-        # Виключаємо явно неправильні результати
-        filtered_results = {}
-        for engine, text in results.items():
-            if not text or not text.strip():
-                continue
-            
-            # Для української мови: перевіряємо, чи є кириличні літери
-            if self.language == OCRLanguage.UKRAINIAN:
-                has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text)
-                # Якщо немає кирилиці - це підозріло для української мови
-                if not has_cyrillic:
-                    # Перевіряємо, чи це не просто латиниця (можливо помилка розпізнавання)
-                    latin_chars = sum(1 for char in text if 'a' <= char.lower() <= 'z')
-                    latin_ratio = latin_chars / len(text) if text else 0
-                    
-                    # Фільтруємо результати без кирилиці, особливо короткі (наприклад, "bir")
-                    if latin_ratio > 0.5:  # Більше 50% латиниці - підозріло
-                        logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (немає кирилиці для української, {latin_ratio:.0%} латиниці)")
-                        continue
-                    
-                    # Якщо дуже короткий результат без кирилиці (наприклад, "bir", "abc") - точно фільтруємо
-                    if len(text.strip()) <= 4 and latin_ratio > 0.3:
-                        logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (занадто короткий без кирилиці)")
-                        continue
-            
-            # Перевіряємо наявність нечитабельних символів (|, \, /, тощо)
-            unreadable_chars = sum(1 for char in text if char in '|\\/[]{}()<>')
-            if unreadable_chars > len(text.strip()) * 0.3:  # Більше 30% нечитабельних символів
-                logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (багато нечитабельних символів)")
-                continue
-            
-            # Перевіряємо, чи текст не надто короткий (менше 2 символів для слова)
-            # Для англійської мови - мінімум 3 символи (наприклад, "e" замість "Hello" - поганий результат)
-            min_length = 3 if self.language == OCRLanguage.ENGLISH else 2
-            if len(text.strip()) < min_length:
-                logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (занадто короткий, мінімум {min_length} символи)")
-                continue
-            
-            # Перевіряємо відсоток букв (результат має містити переважно букви)
-            letter_count = sum(1 for char in text if char.isalpha())
-            if len(text.strip()) > 0:
-                letter_ratio = letter_count / len(text.strip())
-                if letter_ratio < 0.3:  # Менше 30% букв - підозріло
-                    logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (замало букв: {letter_ratio:.1%})")
-                    continue
-            
-            filtered_results[engine] = text
+        filtered_results = self._filter_results(results)
         
-        # Якщо після фільтрації не залишилося результатів, використовуємо всі
         if not filtered_results:
             logger.warning("[RecognitionWorker] Всі результати відфільтровані, використовуємо всі результати")
             filtered_results = results
         
-        # Якщо після фільтрації залишився один результат, повертаємо його
         if len(filtered_results) == 1:
             engine = list(filtered_results.keys())[0]
             logger.info(f"[RecognitionWorker] Після фільтрації залишився один результат від {engine.value}")
             return filtered_results[engine], engine
         
-        # Використовуємо fallback scoring для вибору найкращого результату
+        return self._evaluate_and_select_best(filtered_results, results)
+    
+    def _filter_results(self, results: dict) -> dict:
+        """Фільтрація результатів перед відправкою в ШІ"""
+        filtered_results = {}
+        
+        for engine, text in results.items():
+            if not text or not text.strip():
+                continue
+            
+            if not self._should_include_result(engine, text):
+                continue
+            
+            filtered_results[engine] = text
+        
+        return filtered_results
+    
+    def _should_include_result(self, engine: OCREngine, text: str) -> bool:
+        """Визначення, чи слід включити результат у фільтрацію"""
+        if self.language == OCRLanguage.UKRAINIAN:
+            if not self._check_ukrainian_cyrillic(engine, text):
+                return False
+        
+        if not self._check_unreadable_chars(engine, text):
+            return False
+        
+        if not self._check_min_length(engine, text):
+            return False
+        
+        if not self._check_letter_ratio(engine, text):
+            return False
+        
+        return True
+    
+    def _check_ukrainian_cyrillic(self, engine: OCREngine, text: str) -> bool:
+        """Перевірка наявності кирилиці для української мови"""
+        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text)
+        
+        if not has_cyrillic:
+            latin_chars = sum(1 for char in text if 'a' <= char.lower() <= 'z')
+            latin_ratio = latin_chars / len(text) if text else 0
+            
+            if latin_ratio > 0.5:
+                logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (немає кирилиці для української, {latin_ratio:.0%} латиниці)")
+                return False
+            
+            if len(text.strip()) <= 4 and latin_ratio > 0.3:
+                logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (занадто короткий без кирилиці)")
+                return False
+        
+        return True
+    
+    def _check_unreadable_chars(self, engine: OCREngine, text: str) -> bool:
+        """Перевірка наявності нечитабельних символів"""
+        unreadable_chars = sum(1 for char in text if char in '|\\/[]{}()<>')
+        if unreadable_chars > len(text.strip()) * 0.3:
+            logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (багато нечитабельних символів)")
+            return False
+        return True
+    
+    def _check_min_length(self, engine: OCREngine, text: str) -> bool:
+        """Перевірка мінімальної довжини тексту"""
+        min_length = 3 if self.language == OCRLanguage.ENGLISH else 2
+        if len(text.strip()) < min_length:
+            logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (занадто короткий, мінімум {min_length} символи)")
+            return False
+        return True
+    
+    def _check_letter_ratio(self, engine: OCREngine, text: str) -> bool:
+        """Перевірка відсотка букв у тексті"""
+        letter_count = sum(1 for char in text if char.isalpha())
+        if len(text.strip()) > 0:
+            letter_ratio = letter_count / len(text.strip())
+            if letter_ratio < 0.3:
+                logger.warning(f"[RecognitionWorker] Пропущено результат від {engine.value}: '{text}' (замало букв: {letter_ratio:.1%})")
+                return False
+        return True
+    
+    def _evaluate_and_select_best(self, filtered_results: dict, all_results: dict) -> tuple[str, OCREngine]:
+        """Оцінка та вибір найкращого результату"""
         logger.info("[RecognitionWorker] Використання fallback вибору за очками...")
         print("[RecognitionWorker] Використання fallback вибору за очками...", flush=True)
         
-        # Fallback: вибираємо найкращий результат на основі кількох критеріїв
-        def score_result(text):
-            """Оцінка якості результату"""
-            score = 0
-            text_stripped = text.strip()
-            
-            # Базова оцінка за довжину (довші результати зазвичай кращі, але не завжди)
-            score += len(text_stripped) * 0.1
-            
-            # Для української: перевірка наявності кирилиці
-            has_cyrillic = False
-            if self.language == OCRLanguage.UKRAINIAN:
-                has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text_stripped)
-                has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in text_stripped)
-                
-                # Штраф за змішані латиниця/кирилиця (наприклад, "gнд", "gnd") - це поганий результат
-                if has_cyrillic and has_latin:
-                    score -= 150  # Великий штраф за змішані символи
-                    logger.debug(f"[RecognitionWorker] Штраф за змішані символи: '{text_stripped}'")
-                
-                if has_cyrillic:
-                    score += 200  # Великий бонус за наявність кирилиці
-                    # Додатковий бонус за українські особливі символи
-                    uk_special_chars = sum(1 for char in text_stripped if char in 'іїєІЇЄ')
-                    score += uk_special_chars * 50  # Бонус за кожен український особливий символ
-                    
-                    # Бонус за правильні українські слова (перевірка на поширені слова)
-                    common_uk_words = ['привіт', 'проба', 'тест', 'добрий', 'день', 'вітаю', 'дякую', 'спроба', 'любов', 'україна']
-                    text_lower = text_stripped.lower()
-                    text_no_spaces = text_lower.replace(' ', '').replace('\n', '')
-                    
-                    # Перевірка на точну відповідність або схожість
-                    for word in common_uk_words:
-                        if word in text_lower:
-                            score += 150  # Великий бонус за правильне слово
-                            # Додатковий бонус, якщо слово точно збігається
-                            if text_lower == word or text_lower.startswith(word):
-                                score += 50
-                            # Перевірка на схожість (проста перевірка на наявність ключових частин)
-                            if word == 'україна':
-                                # Перевіряємо наявність правильних частин "укр", "країна"
-                                if 'укр' in text_no_spaces and ('країна' in text_no_spaces or 'країно' in text_no_spaces):
-                                    score += 100  # Великий бонус за правильні частини
-                                # Штраф за помилки в кінці (наприклад, "інб" замість "їна")
-                                if 'інб' in text_no_spaces:
-                                    score -= 50  # Штраф за помилку "інб" замість "їна"
-                            elif word == 'привіт':
-                                # Перевіряємо наявність правильних частин "при", "віт"
-                                if 'при' in text_no_spaces and 'віт' in text_no_spaces:
-                                    score += 100  # Великий бонус за правильні частини
-                                # Штраф за помилки в середині (наприклад, "гб" замість "в")
-                                if 'гб' in text_no_spaces or 'гбіт' in text_no_spaces:
-                                    score -= 80  # Штраф за помилку "гб" замість "в"
-                            break
-                    
-                    # Бонус за слова, що починаються з "Пр" (може бути "Привіт", "Проба")
-                    if text_stripped.startswith('Пр') or text_stripped.startswith('пр'):
-                        score += 50  # Бонус за правильний початок
-                        # Додатковий бонус, якщо це схоже на "Привіт"
-                        if 'віт' in text_lower or 'віт' in text_no_spaces:
-                            score += 40  # Бонус за правильне закінчення "віт"
-                        # Штраф за помилки в середині (наприклад, "гб" замість "в")
-                        if 'гб' in text_no_spaces:
-                            score -= 60  # Штраф за помилку "гб"
-                    
-                    # Бонус за слова, що містять "іт" (для "Привіт")
-                    if 'іт' in text_lower or 'Іт' in text_stripped:
-                        score += 30  # Бонус за правильне закінчення
-                    
-                    # Бонус за слова, що містять "рифт" або "віт" (для "Привіт"), навіть зі спецсимволами
-                    text_no_special = text_no_spaces.replace('|', '').replace('\\', '').replace('/', '').replace('(', '').replace(')', '')
-                    if 'рифт' in text_no_special.lower() or 'віт' in text_no_special.lower():
-                        score += 50  # Великий бонус за правильні частини слова
-                        # Додатковий бонус, якщо є "при" на початку
-                        if text_no_special.lower().startswith('при') or 'при' in text_no_special.lower():
-                            score += 30  # Бонус за правильний початок "при"
-                    
-                    # Бонус за слова, що містять "юбов" (для "Любов"), навіть якщо перша літера неправильна
-                    if 'юбов' in text_no_special.lower() or 'юбов' in text_lower:
-                        score += 60  # Великий бонус за правильні частини слова "любов"
-                        # Додатковий бонус, якщо є "лю" на початку
-                        if text_no_special.lower().startswith('лю') or 'лю' in text_no_special.lower():
-                            score += 40  # Бонус за правильний початок "лю"
-                        # Менший штраф за неправильну першу літеру (наприклад, "І" замість "Л")
-                        if text_stripped.startswith('І') or text_stripped.startswith('і'):
-                            # Якщо є "юбов", але починається з "І", це може бути "Любов"
-                            score += 20  # Невеликий бонус за можливу помилку першої літери
-                    
-                    # Бонус за слова, що містять "країна" або "країно" (для "Україна")
-                    if 'країна' in text_no_special.lower() or 'країно' in text_no_special.lower():
-                        score += 60  # Великий бонус за правильні частини слова "україна"
-                        # Додатковий бонус, якщо є "укр" на початку
-                        if text_no_special.lower().startswith('укр') or 'укр' in text_no_special.lower():
-                            score += 40  # Бонус за правильний початок "укр"
-                        # Штраф за помилки в кінці (наприклад, "інб" замість "їна")
-                        if 'інб' in text_no_special.lower():
-                            score -= 50  # Штраф за помилку "інб" замість "їна"
-                        # Бонус за правильне закінчення "їна" або "їно"
-                        if 'їна' in text_no_special.lower() or 'їно' in text_no_special.lower():
-                            score += 30  # Бонус за правильне закінчення
-                    
-                    # Додатковий бонус за українську особливу літеру "ї" (важливо для "Україна")
-                    if 'ї' in text_stripped or 'Ї' in text_stripped:
-                        score += 25  # Бонус за наявність "ї"
-                else:
-                    score -= 100  # Великий штраф за відсутність кирилиці для української
-            
-            # Штраф за нечитабельні символи
-            unreadable_chars = sum(1 for char in text_stripped if char in '|\\/[]{}()<>')
-            # Менший штраф, якщо текст містить правильні частини слова (наприклад, "|рифт" має "рифт")
-            if self.language == OCRLanguage.UKRAINIAN and has_cyrillic:
-                # Перевіряємо, чи є правильні частини слова навіть зі спецсимволами
-                text_no_special = text_stripped.replace('|', '').replace('\\', '').replace('/', '').replace('(', '').replace(')', '')
-                if 'рифт' in text_no_special.lower() or 'віт' in text_no_special.lower():
-                    # Якщо є правильні частини, штраф менший
-                    score -= unreadable_chars * 10  # Менший штраф за спецсимволи, якщо є правильні частини
-                else:
-                    score -= unreadable_chars * 20  # Повний штраф за спецсимволи
-            else:
-                score -= unreadable_chars * 20  # Штраф за кожен нечитабельний символ
-            
-            # Штраф за переноси рядків (\n) в коротких результатах - це поганий результат
-            if '\n' in text_stripped:
-                # Для коротких результатів (менше 10 символів) переноси рядків - це погано
-                if len(text_stripped) < 10:
-                    score -= 40  # Штраф за переноси рядків в коротких результатах
-                else:
-                    score -= 20  # Менший штраф для довгих результатів
-            
-            # Штраф за занадто багато пробілів або розділових знаків
-            punctuation_ratio = sum(1 for char in text_stripped if char in '.,;:!?') / max(len(text_stripped), 1)
-            if punctuation_ratio > 0.3:  # Більше 30% розділових знаків - підозріло
-                score -= 50
-            
-            # Штраф за крапку в кінці коротких слів (наприклад, "Україно." замість "Україна")
-            if text_stripped.endswith('.') and len(text_stripped) < 15:
-                score -= 30  # Штраф за крапку в кінці короткого слова
-                # Додатковий штраф, якщо є альтернативи без крапки
-                if self.language == OCRLanguage.UKRAINIAN:
-                    # Перевіряємо, чи є інші результати без крапки
-                    other_results = [t for e, t in (filtered_results if filtered_results else results).items() if t != text_stripped]
-                    if other_results:
-                        # Якщо є результати без крапки, штрафуємо сильніше
-                        results_without_dot = [t for t in other_results if not t.strip().endswith('.')]
-                        if results_without_dot:
-                            score -= 20  # Додатковий штраф, якщо є альтернативи без крапки
-                            logger.debug(f"[RecognitionWorker] Штраф за крапку в кінці '{text_stripped}' (є альтернативи без крапки)")
-            
-            # Бонус за наявність букв (не тільки символи)
-            letter_count = sum(1 for char in text_stripped if char.isalpha())
-            if letter_count > 0:
-                letter_ratio = letter_count / len(text_stripped)
-                score += letter_ratio * 100  # Бонус за високий відсоток букв
-            
-            # Штраф за дуже короткі результати
-            if len(text_stripped) < 3:
-                score -= 50
-            
-            # Штраф за результати, які виглядають як помилки (багато спецсимволів)
-            if len(text_stripped) > 0:
-                special_char_ratio = sum(1 for char in text_stripped if not (char.isalnum() or char.isspace())) / len(text_stripped)
-                if special_char_ratio > 0.4:  # Більше 40% спецсимволів
-                    score -= 100
-            
-            return score
-        
-        # Оцінюємо всі результати (використовуємо filtered_results, або всі якщо порожні)
-        results_to_score = filtered_results if filtered_results else results
-        
-        # Для української: обчислюємо довжини для порівняння
+        results_to_score = filtered_results if filtered_results else all_results
         all_lengths = [len(t.strip()) for t in results_to_score.values()] if results_to_score else []
         max_len = max(all_lengths) if all_lengths else 0
         
         scored_results = []
         for engine, text in results_to_score.items():
-            score = score_result(text)
-            # Додатковий штраф для коротких результатів, якщо є довші альтернативи
+            score = self._score_result(text, filtered_results, all_results)
+            
             if self.language == OCRLanguage.UKRAINIAN and len(results_to_score) > 1:
                 text_len = len(text.strip())
-                if text_len < 5 and max_len > text_len + 1:  # Результат значно коротший за інші
+                if text_len < 5 and max_len > text_len + 1:
                     score -= 30
                     logger.debug(f"[RecognitionWorker] Штраф за короткий результат '{text}' (довжина: {text_len}, макс: {max_len})")
+            
             scored_results.append((engine, text, score))
-        scored_results.sort(key=lambda x: x[2], reverse=True)  # Сортуємо за оцінкою
+        
+        scored_results.sort(key=lambda x: x[2], reverse=True)
         
         if not scored_results:
-            # Якщо все відфільтровано, повертаємо перший доступний результат
-            if results:
-                engine = list(results.keys())[0]
+            if all_results:
+                engine = list(all_results.keys())[0]
                 logger.warning(f"[RecognitionWorker] Всі результати відфільтровані, використовується перший: {engine.value}")
-                return results[engine], engine
-            else:
-                return "", OCREngine.TESSERACT
+                return all_results[engine], engine
+            return "", OCREngine.TESSERACT
         
         best_engine, best_text, best_score = scored_results[0]
         logger.info(f"[RecognitionWorker] Fallback: вибрано результат від {best_engine.value} з оцінкою {best_score:.1f}")
@@ -463,6 +323,193 @@ class RecognitionWorker(QThread):
         print(f"[RecognitionWorker] Всі результати: {[(e.value, t[:20], f'{s:.1f}') for e, t, s in scored_results]}", flush=True)
         
         return best_text, best_engine
+    
+    def _score_result(self, text: str, filtered_results: dict, all_results: dict) -> float:
+        """Оцінка якості результату"""
+        score = 0.0
+        text_stripped = text.strip()
+        
+        score += len(text_stripped) * 0.1
+        
+        if self.language == OCRLanguage.UKRAINIAN:
+            score += self._score_ukrainian_text(text_stripped, filtered_results, all_results)
+        
+        score += self._score_readability(text_stripped, filtered_results, all_results)
+        score += self._score_text_quality(text_stripped)
+        
+        return score
+    
+    def _score_ukrainian_text(self, text_stripped: str, filtered_results: dict, all_results: dict) -> float:
+        """Оцінка українського тексту"""
+        score = 0.0
+        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text_stripped)
+        has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in text_stripped)
+        
+        if has_cyrillic and has_latin:
+            score -= 150
+            logger.debug(f"[RecognitionWorker] Штраф за змішані символи: '{text_stripped}'")
+        
+        if has_cyrillic:
+            score += 200
+            score += self._score_ukrainian_special_chars(text_stripped)
+            score += self._score_ukrainian_common_words(text_stripped)
+            score += self._score_ukrainian_word_patterns(text_stripped)
+        else:
+            score -= 100
+        
+        return score
+    
+    def _score_ukrainian_special_chars(self, text_stripped: str) -> float:
+        """Оцінка за українські особливі символи"""
+        uk_special_chars = sum(1 for char in text_stripped if char in 'іїєІЇЄ')
+        score = uk_special_chars * 50
+        
+        if 'ї' in text_stripped or 'Ї' in text_stripped:
+            score += 25
+        
+        return score
+    
+    def _score_ukrainian_common_words(self, text_stripped: str) -> float:
+        """Оцінка за поширені українські слова"""
+        score = 0.0
+        common_uk_words = ['привіт', 'проба', 'тест', 'добрий', 'день', 'вітаю', 'дякую', 'спроба', 'любов', 'україна']
+        text_lower = text_stripped.lower()
+        text_no_spaces = text_lower.replace(' ', '').replace('\n', '')
+        
+        for word in common_uk_words:
+            if word in text_lower:
+                score += 150
+                if text_lower == word or text_lower.startswith(word):
+                    score += 50
+                
+                if word == 'україна':
+                    score += self._score_ukraine_word(text_no_spaces)
+                elif word == 'привіт':
+                    score += self._score_privit_word(text_no_spaces)
+                break
+        
+        return score
+    
+    def _score_ukraine_word(self, text_no_spaces: str) -> float:
+        """Оцінка за слово 'україна'"""
+        score = 0.0
+        
+        if 'укр' in text_no_spaces and ('країна' in text_no_spaces or 'країно' in text_no_spaces):
+            score += 100
+        
+        if 'інб' in text_no_spaces:
+            score -= 50
+        
+        text_no_special = text_no_spaces.replace('|', '').replace('\\', '').replace('/', '').replace('(', '').replace(')', '')
+        if 'країна' in text_no_special.lower() or 'країно' in text_no_special.lower():
+            score += 60
+            if text_no_special.lower().startswith('укр') or 'укр' in text_no_special.lower():
+                score += 40
+            if 'інб' in text_no_special.lower():
+                score -= 50
+            if 'їна' in text_no_special.lower() or 'їно' in text_no_special.lower():
+                score += 30
+        
+        return score
+    
+    def _score_privit_word(self, text_no_spaces: str) -> float:
+        """Оцінка за слово 'привіт'"""
+        score = 0.0
+        
+        if 'при' in text_no_spaces and 'віт' in text_no_spaces:
+            score += 100
+        
+        if 'гб' in text_no_spaces or 'гбіт' in text_no_spaces:
+            score -= 80
+        
+        return score
+    
+    def _score_ukrainian_word_patterns(self, text_stripped: str) -> float:
+        """Оцінка за патерни українських слів"""
+        score = 0.0
+        text_lower = text_stripped.lower()
+        text_no_spaces = text_lower.replace(' ', '').replace('\n', '')
+        text_no_special = text_no_spaces.replace('|', '').replace('\\', '').replace('/', '').replace('(', '').replace(')', '')
+        
+        if text_stripped.startswith('Пр') or text_stripped.startswith('пр'):
+            score += 50
+            if 'віт' in text_lower or 'віт' in text_no_spaces:
+                score += 40
+            if 'гб' in text_no_spaces:
+                score -= 60
+        
+        if 'іт' in text_lower or 'Іт' in text_stripped:
+            score += 30
+        
+        if 'рифт' in text_no_special.lower() or 'віт' in text_no_special.lower():
+            score += 50
+            if text_no_special.lower().startswith('при') or 'при' in text_no_special.lower():
+                score += 30
+        
+        if 'юбов' in text_no_special.lower() or 'юбов' in text_lower:
+            score += 60
+            if text_no_special.lower().startswith('лю') or 'лю' in text_no_special.lower():
+                score += 40
+            if text_stripped.startswith('І') or text_stripped.startswith('і'):
+                score += 20
+        
+        return score
+    
+    def _score_readability(self, text_stripped: str, filtered_results: dict, all_results: dict) -> float:
+        """Оцінка читабельності тексту"""
+        score = 0.0
+        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text_stripped)
+        unreadable_chars = sum(1 for char in text_stripped if char in '|\\/[]{}()<>')
+        
+        if self.language == OCRLanguage.UKRAINIAN and has_cyrillic:
+            text_no_special = text_stripped.replace('|', '').replace('\\', '').replace('/', '').replace('(', '').replace(')', '')
+            if 'рифт' in text_no_special.lower() or 'віт' in text_no_special.lower():
+                score -= unreadable_chars * 10
+            else:
+                score -= unreadable_chars * 20
+        else:
+            score -= unreadable_chars * 20
+        
+        if '\n' in text_stripped:
+            if len(text_stripped) < 10:
+                score -= 40
+            else:
+                score -= 20
+        
+        punctuation_ratio = sum(1 for char in text_stripped if char in '.,;:!?') / max(len(text_stripped), 1)
+        if punctuation_ratio > 0.3:
+            score -= 50
+        
+        if text_stripped.endswith('.') and len(text_stripped) < 15:
+            score -= 30
+            if self.language == OCRLanguage.UKRAINIAN:
+                other_results = [t for e, t in (filtered_results if filtered_results else all_results).items() if t != text_stripped]
+                if other_results:
+                    results_without_dot = [t for t in other_results if not t.strip().endswith('.')]
+                    if results_without_dot:
+                        score -= 20
+                        logger.debug(f"[RecognitionWorker] Штраф за крапку в кінці '{text_stripped}' (є альтернативи без крапки)")
+        
+        return score
+    
+    def _score_text_quality(self, text_stripped: str) -> float:
+        """Оцінка загальної якості тексту"""
+        score = 0.0
+        
+        letter_count = sum(1 for char in text_stripped if char.isalpha())
+        if letter_count > 0:
+            letter_ratio = letter_count / len(text_stripped)
+            score += letter_ratio * 100
+        
+        if len(text_stripped) < 3:
+            score -= 50
+        
+        if len(text_stripped) > 0:
+            special_char_ratio = sum(1 for char in text_stripped if not (char.isalnum() or char.isspace())) / len(text_stripped)
+            if special_char_ratio > 0.4:
+                score -= 100
+        
+        return score
 
 
 class ImprovedController:

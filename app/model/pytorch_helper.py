@@ -27,11 +27,9 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
     """
     global _DLL_LOAD_ATTEMPTED, _DLL_LOAD_SUCCESS
     
-    # Якщо вже намагалися завантажити і не вдалося, не повторюємо спроби
     if _DLL_LOAD_ATTEMPTED and not _DLL_LOAD_SUCCESS:
         return False
     
-    # Якщо вже успішно завантажили, повертаємо True
     if _DLL_LOAD_SUCCESS:
         return True
     
@@ -39,80 +37,17 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
     
     try:
         torch_lib_str = str(torch_lib_path.absolute())
+        _add_dll_directory(torch_lib_str)
         
-        # Метод 1: os.add_dll_directory (Windows 10+)
-        # Це найкращий спосіб для Windows 10/11
-        try:
-            if hasattr(os, 'add_dll_directory'):
-                os.add_dll_directory(torch_lib_str)
-                logger.info(f"✓ Додано torch/lib до DLL search path: {torch_lib_str}")
-        except Exception as e:
-            logger.debug(f"os.add_dll_directory не працює: {e}")
+        loaded_dlls = _load_dlls_with_loadlibraryex(torch_lib_path)
+        if loaded_dlls:
+            logger.info(f"✓ Явно завантажено PyTorch DLL: {', '.join(loaded_dlls)}")
+            _DLL_LOAD_SUCCESS = True
+            return True
         
-        # Метод 2: LoadLibraryEx з LOAD_WITH_ALTERED_SEARCH_PATH
-        # Це найнадійніший спосіб для завантаження DLL з правильним пошуком залежностей
-        try:
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-            load_library_ex_w = kernel32.LoadLibraryExW
-            load_library_ex_w.argtypes = [wintypes.LPCWSTR, wintypes.HANDLE, wintypes.DWORD]
-            load_library_ex_w.restype = wintypes.HMODULE
-            
-            # Константи для LoadLibraryEx
-            LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
-            
-            # Список критичних DLL PyTorch, які потрібно завантажити в правильному порядку
-            critical_dlls = [
-                "c10.dll",
-                "torch_cpu.dll"
-            ]
-            
-            loaded_dlls = []
-            for dll_name in critical_dlls:
-                dll_path = torch_lib_path / dll_name
-                if dll_path.exists():
-                    try:
-                        # Завантажуємо DLL через LoadLibraryEx з LOAD_WITH_ALTERED_SEARCH_PATH
-                        # Це дозволяє знаходити залежності в тій самій папці
-                        dll_path_str = str(dll_path.absolute())
-                        hmodule = load_library_ex_w(dll_path_str, None, LOAD_WITH_ALTERED_SEARCH_PATH)
-                        if hmodule:
-                            loaded_dlls.append(dll_name)
-                            logger.info(f"✓ Завантажено {dll_name} через LoadLibraryEx")
-                        else:
-                            error_code = ctypes.get_last_error()
-                            # WinError 1114 означає, що DLL не може бути ініціалізована
-                            # Це системна проблема, не проблема коду
-                            if error_code == 1114:
-                                logger.warning(f"✗ {dll_name} не може бути ініціалізована (WinError 1114)")
-                                logger.warning("  Це системна проблема. Перевірте Visual C++ Redistributables та перевстановіть PyTorch.")
-                            else:
-                                logger.debug(f"Не вдалося завантажити {dll_name}, код помилки: {error_code}")
-                    except Exception as e:
-                        # Якщо не вдалося завантажити через LoadLibraryEx, спробуємо через WinDLL
-                        try:
-                            ctypes.WinDLL(str(dll_path))
-                            loaded_dlls.append(dll_name)
-                            logger.info(f"✓ Завантажено {dll_name} через WinDLL")
-                        except Exception as e2:
-                            logger.debug(f"Не вдалося завантажити {dll_name}: {e2}")
-            
-            if loaded_dlls:
-                logger.info(f"✓ Явно завантажено PyTorch DLL: {', '.join(loaded_dlls)}")
-                _DLL_LOAD_SUCCESS = True
-                return True
-        except Exception as e:
-            logger.debug(f"Помилка LoadLibraryEx: {e}")
-            # Fallback до простого WinDLL
-            try:
-                critical_dlls = ["c10.dll", "torch_cpu.dll"]
-                for dll_name in critical_dlls:
-                    dll_path = torch_lib_path / dll_name
-                    if dll_path.exists():
-                        ctypes.WinDLL(str(dll_path))
-                        logger.info(f"✓ Завантажено {dll_name} через WinDLL (fallback)")
-                        return True
-            except Exception:
-                pass
+        if _try_fallback_windll(torch_lib_path):
+            _DLL_LOAD_SUCCESS = True
+            return True
         
         _DLL_LOAD_SUCCESS = False
         return False
@@ -120,6 +55,92 @@ def _load_pytorch_dlls_explicitly(torch_lib_path: Path) -> bool:
         logger.debug(f"Помилка явного завантаження PyTorch DLL: {e}")
         _DLL_LOAD_SUCCESS = False
         return False
+
+
+def _add_dll_directory(torch_lib_str: str) -> None:
+    """Додавання torch/lib до DLL search path через os.add_dll_directory"""
+    try:
+        if hasattr(os, 'add_dll_directory'):
+            os.add_dll_directory(torch_lib_str)
+            logger.info(f"✓ Додано torch/lib до DLL search path: {torch_lib_str}")
+    except Exception as e:
+        logger.debug(f"os.add_dll_directory не працює: {e}")
+
+
+def _load_dlls_with_loadlibraryex(torch_lib_path: Path) -> list[str]:
+    """Завантаження критичних DLL через LoadLibraryEx"""
+    try:
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        load_library_ex_w = kernel32.LoadLibraryExW
+        load_library_ex_w.argtypes = [wintypes.LPCWSTR, wintypes.HANDLE, wintypes.DWORD]
+        load_library_ex_w.restype = wintypes.HMODULE
+        
+        LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
+        critical_dlls = ["c10.dll", "torch_cpu.dll"]
+        
+        loaded_dlls = []
+        for dll_name in critical_dlls:
+            dll_path = torch_lib_path / dll_name
+            if dll_path.exists():
+                if _try_load_dll_with_loadlibraryex(load_library_ex_w, dll_path, dll_name, LOAD_WITH_ALTERED_SEARCH_PATH):
+                    loaded_dlls.append(dll_name)
+                elif _try_load_dll_with_windll(dll_path, dll_name):
+                    loaded_dlls.append(dll_name)
+        
+        return loaded_dlls
+    except Exception as e:
+        logger.debug(f"Помилка LoadLibraryEx: {e}")
+        return []
+
+
+def _try_load_dll_with_loadlibraryex(load_library_ex_w, dll_path: Path, dll_name: str, flag: int) -> bool:
+    """Спроба завантажити DLL через LoadLibraryEx"""
+    try:
+        dll_path_str = str(dll_path.absolute())
+        hmodule = load_library_ex_w(dll_path_str, None, flag)
+        if hmodule:
+            logger.info(f"✓ Завантажено {dll_name} через LoadLibraryEx")
+            return True
+        
+        _log_dll_load_error(dll_name, ctypes.get_last_error())
+        return False
+    except Exception:
+        return False
+
+
+def _try_load_dll_with_windll(dll_path: Path, dll_name: str) -> bool:
+    """Спроба завантажити DLL через WinDLL (fallback)"""
+    try:
+        ctypes.WinDLL(str(dll_path))
+        logger.info(f"✓ Завантажено {dll_name} через WinDLL")
+        return True
+    except Exception as e:
+        logger.debug(f"Не вдалося завантажити {dll_name}: {e}")
+        return False
+
+
+def _log_dll_load_error(dll_name: str, error_code: int) -> None:
+    """Логування помилки завантаження DLL"""
+    if error_code == 1114:
+        logger.warning(f"✗ {dll_name} не може бути ініціалізована (WinError 1114)")
+        logger.warning("  Це системна проблема. Перевірте Visual C++ Redistributables та перевстановіть PyTorch.")
+    else:
+        logger.debug(f"Не вдалося завантажити {dll_name}, код помилки: {error_code}")
+
+
+def _try_fallback_windll(torch_lib_path: Path) -> bool:
+    """Fallback завантаження через простий WinDLL"""
+    try:
+        critical_dlls = ["c10.dll", "torch_cpu.dll"]
+        for dll_name in critical_dlls:
+            dll_path = torch_lib_path / dll_name
+            if dll_path.exists():
+                ctypes.WinDLL(str(dll_path))
+                logger.info(f"✓ Завантажено {dll_name} через WinDLL (fallback)")
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def setup_pytorch_path() -> bool:

@@ -107,10 +107,6 @@ def test_imports():
         from app.model.handwrite_preprocess import ImagePreprocessor
         from app.model.handwrite_export import TextExporter
         from app.model.unified_ocr_adapter import UnifiedOCRAdapter
-        # Якщо імпорти не викликають помилку, тест вважається успішним
-        assert ImagePreprocessor is not None
-        assert TextExporter is not None
-        assert UnifiedOCRAdapter is not None
     except ImportError as e:
         pytest.fail(f"Помилка імпорту: {e}")
 

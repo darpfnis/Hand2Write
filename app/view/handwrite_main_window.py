@@ -445,78 +445,92 @@ class MainWindow(QMainWindow):
     
     def update_ocr_engines(self, language):
         """Оновлення списку доступних OCR рушіїв залежно від вибраної мови"""
-        # Зберігаємо поточну мову
         self.current_language = language
-        
         current_selection = self.ocr_engine_combo.currentText()
         
-        # Перевіряємо доступність рушіїв для tooltip
+        available_engines = self._get_available_engines()
+        engines, default_engine = self._get_engines_for_language(language)
+        self._build_engine_availability(available_engines)
+        
+        self._disconnect_combo_signal()
+        self._update_combo_items(engines)
+        self._set_engine_tooltips(engines, language)
+        self._restore_selection(current_selection, engines, default_engine)
+        
+        self.update_engine_tooltip()
+        self._connect_combo_signal()
+    
+    def _get_available_engines(self):
+        """Отримання списку доступних OCR рушіїв"""
         from model.unified_ocr_adapter import UnifiedOCRAdapter
         temp_adapter = UnifiedOCRAdapter(engine='tesseract')
-        available_engines = temp_adapter.get_available_engines()
-        
-        # Для української мови приховуємо PaddleOCR та встановлюємо Tesseract як основний
-        # Tesseract має найкращу підтримку української мови
+        return temp_adapter.get_available_engines()
+    
+    def _get_engines_for_language(self, language):
+        """Визначення списку рушіїв та дефолтного рушія для мови"""
         if language == LANG_UKRAINIAN:
-            engines = ["Tesseract", "EasyOCR"]
-            # Встановлюємо Tesseract як основний для української
-            default_engine = "Tesseract"
-        else:
-            engines = ["Tesseract", "EasyOCR", "PaddleOCR"]
-            default_engine = None
-        
-        # Зберігаємо інформацію про доступність для tooltip
+            return ["Tesseract", "EasyOCR"], "Tesseract"
+        return ["Tesseract", "EasyOCR", "PaddleOCR"], None
+    
+    def _build_engine_availability(self, available_engines):
+        """Побудова словника доступності рушіїв"""
         self._engine_availability = {
             'tesseract': 'tesseract' in available_engines,
             'easyocr': 'easyocr' in available_engines,
             'paddleocr': 'paddleocr' in available_engines
         }
-        
-        # Відключаємо сигнал перед очищенням, щоб уникнути зайвих викликів
+    
+    def _disconnect_combo_signal(self):
+        """Відключення сигналу комбобоксу перед оновленням"""
         try:
             self.ocr_engine_combo.currentTextChanged.disconnect()
         except TypeError:
-            # Сигнал не був підключений, це нормально
             pass
-        
-        # Оновлюємо список
+    
+    def _connect_combo_signal(self):
+        """Підключення сигналу комбобоксу після оновлення"""
+        self.ocr_engine_combo.currentTextChanged.connect(self.update_engine_tooltip)
+    
+    def _update_combo_items(self, engines):
+        """Оновлення елементів комбобоксу"""
         self.ocr_engine_combo.clear()
         self.ocr_engine_combo.addItems(engines)
-        
-        # Встановлюємо tooltip для кожного рушія в списку
+    
+    def _set_engine_tooltips(self, engines, language):
+        """Встановлення tooltip для кожного рушія в комбобоксі"""
         for i, engine in enumerate(engines):
-            tooltip_text = self.get_engine_tooltip(language, engine)
-            
-            # Додаємо інформацію про доступність до tooltip
-            engine_lower = engine.lower()
-            if engine_lower in self._engine_availability:
-                is_available = self._engine_availability[engine_lower]
-                if not is_available:
-                    availability_note = "\n\n⚠️ Увага: Рушій зараз недоступний (проблеми з PyTorch DLL). Буде автоматично використано Tesseract."
-                    tooltip_text = (tooltip_text or "") + availability_note
-            
+            tooltip_text = self._build_engine_tooltip(language, engine)
             if tooltip_text:
-                # Встановлюємо tooltip через модель комбобоксу
-                model = self.ocr_engine_combo.model()
-                if model:
-                    index = model.index(i, 0)
-                    model.setData(index, tooltip_text, Qt.ItemDataRole.ToolTipRole)
+                self._set_combo_item_tooltip(i, tooltip_text)
+    
+    def _build_engine_tooltip(self, language, engine):
+        """Побудова тексту tooltip для рушія"""
+        tooltip_text = self.get_engine_tooltip(language, engine)
+        engine_lower = engine.lower()
         
-        # Відновлюємо попередній вибір, якщо він все ще доступний
+        if engine_lower in self._engine_availability:
+            is_available = self._engine_availability[engine_lower]
+            if not is_available:
+                availability_note = "\n\n⚠️ Увага: Рушій зараз недоступний (проблеми з PyTorch DLL). Буде автоматично використано Tesseract."
+                tooltip_text = (tooltip_text or "") + availability_note
+        
+        return tooltip_text
+    
+    def _set_combo_item_tooltip(self, index, tooltip_text):
+        """Встановлення tooltip для елемента комбобоксу"""
+        model = self.ocr_engine_combo.model()
+        if model:
+            item_index = model.index(index, 0)
+            model.setData(item_index, tooltip_text, Qt.ItemDataRole.ToolTipRole)
+    
+    def _restore_selection(self, current_selection, engines, default_engine):
+        """Відновлення вибору рушія в комбобоксі"""
         if current_selection in engines:
             self.ocr_engine_combo.setCurrentText(current_selection)
+        elif default_engine and default_engine in engines:
+            self.ocr_engine_combo.setCurrentText(default_engine)
         else:
-            # Якщо попередній вибір недоступний, вибираємо рекомендований або перший доступний
-            if default_engine and default_engine in engines:
-                self.ocr_engine_combo.setCurrentText(default_engine)
-            else:
-                self.ocr_engine_combo.setCurrentIndex(0)
-        
-        # Встановлюємо tooltip для вибраного рушія
-        self.update_engine_tooltip()
-        
-        # Підключаємо сигнал для оновлення tooltip при зміні вибору
-        self.ocr_engine_combo.currentTextChanged.connect(self.update_engine_tooltip)
+            self.ocr_engine_combo.setCurrentIndex(0)
     
     def update_engine_tooltip(self):
         """Оновлення tooltip комбобоксу з інформацією про вибраний рушій"""

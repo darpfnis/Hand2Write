@@ -143,9 +143,9 @@ def main():
         pytorch_loaded: bool = bool(preload_pytorch())
         app = _create_qapplication()
         splash = _show_splash()
-        _preload_models_if_needed(pytorch_loaded, splash, app)
-        window = _create_main_window(splash, app)
-        _run_event_loop(app, window, pytorch_loaded)
+        _preload_models_if_needed(pytorch_loaded, splash)
+        window = _create_main_window(splash)
+        _run_event_loop(app, pytorch_loaded)
     except KeyboardInterrupt:
         logger.info("Завантаження перервано користувачем")
         sys.exit(0)
@@ -188,7 +188,7 @@ def _show_splash():
     return splash
 
 
-def _preload_models_if_needed(pytorch_loaded: bool, splash, app) -> None:
+def _preload_models_if_needed(pytorch_loaded: bool, splash) -> None:
     """
     Попереднє завантаження моделей OCR (якщо PyTorch доступний).
     КРИТИЧНО: виконується ДО створення головного вікна.
@@ -238,7 +238,7 @@ def _preload_models_if_needed(pytorch_loaded: bool, splash, app) -> None:
         # Продовжуємо роботу навіть якщо не вдалося завантажити моделі
 
 
-def _create_main_window(splash, app):
+def _create_main_window(splash):
     """Створення головного вікна після прелоаду моделей."""
     from view.handwrite_main_window import MainWindow
     from PyQt6.QtWidgets import QApplication
@@ -262,7 +262,7 @@ def _create_main_window(splash, app):
     return window
 
 
-def _run_event_loop(app, window, pytorch_loaded: bool) -> None:
+def _run_event_loop(app, pytorch_loaded: bool) -> None:
     """Логування фінального статусу та запуск подієвого циклу."""
     logger.info("=" * 60)
     logger.info("Програма готова до роботи")
