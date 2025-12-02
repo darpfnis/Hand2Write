@@ -40,6 +40,43 @@ MSG_RECOGNIZED_TEXT = "розпізнаний текст"
 # Константа для стилю CSS
 TITLE_STYLE = "color: #2c3e50; padding: 5px;"
 
+# Стиль для QMessageBox з білим текстом
+MESSAGE_BOX_STYLE = """
+    QMessageBox {
+        background-color: #2c3e50;
+        color: white;
+    }
+    QMessageBox QLabel {
+        color: white;
+        background-color: transparent;
+    }
+    QMessageBox QPushButton {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 4px;
+    }
+    QMessageBox QPushButton:hover {
+        background-color: #2980b9;
+    }
+    QMessageBox QPushButton:pressed {
+        background-color: #21618c;
+    }
+"""
+
+
+def _create_styled_message_box(parent, icon, title, text, buttons=None):
+    """Створення QMessageBox з білим текстом"""
+    msg = QMessageBox(parent)
+    msg.setIcon(icon)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setStyleSheet(MESSAGE_BOX_STYLE)
+    if buttons:
+        msg.setStandardButtons(buttons)
+    return msg
+
 
 class MainWindow(QMainWindow):
     """Головне вікно програми"""
@@ -684,10 +721,14 @@ class MainWindow(QMainWindow):
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
         
+        # Кнопка "Копіювати"
         copy_btn = QPushButton("Копіювати")
         copy_btn.clicked.connect(self.copy_text)
         buttons_layout.addWidget(copy_btn)
         
+        buttons_layout.addSpacing(15)  # Відступ між групами кнопок
+        
+        # Кнопки експорту
         save_txt_btn = QPushButton("Зберегти TXT")
         save_txt_btn.clicked.connect(lambda: self.export_text("txt"))
         buttons_layout.addWidget(save_txt_btn)
@@ -699,6 +740,8 @@ class MainWindow(QMainWindow):
         save_pdf_btn = QPushButton("Зберегти PDF")
         save_pdf_btn.clicked.connect(lambda: self.export_text("pdf"))
         buttons_layout.addWidget(save_pdf_btn)
+        
+        buttons_layout.addStretch()  # Розтягування для вирівнювання
         
         layout.addLayout(buttons_layout)
         
@@ -757,37 +800,41 @@ class MainWindow(QMainWindow):
             # Перевірка розміру файлу (обмеження 10MB)
             file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
             if file_size > 10:
-                QMessageBox.warning(
-                    self, MSG_ERROR,
+                msg = _create_styled_message_box(
+                    self, QMessageBox.Icon.Warning, MSG_ERROR,
                     "Файл занадто великий. Максимальний розмір: 10 MB"
                 )
+                msg.exec()
                 return
                 
             # Валідація формату зображення
             from handwrite_config import Config
             if not Config.is_valid_image_format(file_path):
-                QMessageBox.warning(
-                    self, MSG_ERROR,
+                msg = _create_styled_message_box(
+                    self, QMessageBox.Icon.Warning, MSG_ERROR,
                     f"Непідтримуваний формат файлу. Підтримувані формати: {', '.join(Config.SUPPORTED_IMAGE_FORMATS)}"
                 )
+                msg.exec()
                 return
             
             # Перевірка коректності зображення
             pixmap = QPixmap(file_path)
             if pixmap.isNull():
-                QMessageBox.warning(
-                    self, MSG_ERROR,
+                msg = _create_styled_message_box(
+                    self, QMessageBox.Icon.Warning, MSG_ERROR,
                     "Не вдалося завантажити зображення. Файл може бути пошкоджений або має непідтримуваний формат."
                 )
+                msg.exec()
                 return
             
             # Перевірка розмірів зображення
             width, height = pixmap.width(), pixmap.height()
             if width > Config.MAX_IMAGE_WIDTH or height > Config.MAX_IMAGE_HEIGHT:
-                QMessageBox.warning(
-                    self, MSG_ERROR,
+                msg = _create_styled_message_box(
+                    self, QMessageBox.Icon.Warning, MSG_ERROR,
                     f"Зображення занадто велике ({width}x{height}). Максимальні розміри: {Config.MAX_IMAGE_WIDTH}x{Config.MAX_IMAGE_HEIGHT}"
                 )
+                msg.exec()
                 return
                 
             self.current_image_path = file_path
@@ -832,29 +879,34 @@ class MainWindow(QMainWindow):
         """Отримання шляху до зображення залежно від поточного режиму."""
         if self.current_mode == 'upload':
             if not self.current_image_path:
-                QMessageBox.warning(self, MSG_ERROR, "Завантажте зображення!")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Warning, MSG_ERROR, "Завантажте зображення!")
+                msg.exec()
                 return None
             return self.current_image_path
 
         if self.current_mode == 'draw':
             if not hasattr(self, 'canvas') or self.canvas is None:
-                QMessageBox.warning(self, MSG_ERROR, "Полотно не ініціалізовано!")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Warning, MSG_ERROR, "Полотно не ініціалізовано!")
+                msg.exec()
                 return None
             image_path = self.canvas.save_to_temp()
             if not image_path:
-                QMessageBox.warning(self, MSG_ERROR, "Намалюйте текст!")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Warning, MSG_ERROR, "Намалюйте текст!")
+                msg.exec()
                 return None
             return image_path
 
-        QMessageBox.warning(self, MSG_ERROR, "Оберіть режим роботи!")
+        msg = _create_styled_message_box(self, QMessageBox.Icon.Warning, MSG_ERROR, "Оберіть режим роботи!")
+        msg.exec()
         return None
 
     def _validate_image_path(self, image_path: str) -> bool:
         """Перевірка існування файлу зображення."""
         if not os.path.exists(image_path):
-            QMessageBox.critical(
-                self, MSG_ERROR, f"Файл зображення не знайдено: {image_path}"
+            msg = _create_styled_message_box(
+                self, QMessageBox.Icon.Critical, MSG_ERROR, f"Файл зображення не знайдено: {image_path}"
             )
+            msg.exec()
             return False
         return True
 
@@ -1060,18 +1112,21 @@ class MainWindow(QMainWindow):
                 logger.error(
                     "[MainWindow] Помилка при виведенні результату: %s", error
                 )
-                QMessageBox.warning(
-                    self, MSG_ERROR, f"Не вдалося вивести результат: {error}"
+                msg = _create_styled_message_box(
+                    self, QMessageBox.Icon.Warning, MSG_ERROR, f"Не вдалося вивести результат: {error}"
                 )
+                msg.exec()
         else:
             logger.error(
                 "[MainWindow] Не вдалося знайти result_text для відображення результату"
             )
-            QMessageBox.information(
+            msg = _create_styled_message_box(
                 self,
+                QMessageBox.Icon.Information,
                 "Результат розпізнавання",
                 text[:500] + ("..." if len(text) > 500 else ""),
             )
+            msg.exec()
         
     def on_recognition_error(self, error_msg: str):
         """Помилка розпізнавання"""
@@ -1083,17 +1138,20 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         if hasattr(self, 'statusbar'):
             self.statusbar.showMessage(MSG_ERROR, 5000)
-        QMessageBox.critical(self, MSG_ERROR, error_msg)
+        msg = _create_styled_message_box(self, QMessageBox.Icon.Critical, MSG_ERROR, error_msg)
+        msg.exec()
         """Обробник помилки розпізнавання"""
         self.progress_bar.hide()
         self.statusbar.showMessage(MSG_ERROR, 5000)
-        QMessageBox.critical(self, "Помилка розпізнавання", error_msg)
+        msg = _create_styled_message_box(self, QMessageBox.Icon.Critical, "Помилка розпізнавання", error_msg)
+        msg.exec()
         
     def copy_text(self):
         """Копіювання тексту в буфер обміну"""
         result_text = self._get_result_text()
         if result_text is None:
-            QMessageBox.information(self, MSG_INFO, "Немає тексту для копіювання")
+            msg = _create_styled_message_box(self, QMessageBox.Icon.Information, MSG_INFO, "Немає тексту для копіювання")
+            msg.exec()
             return
         
         text = result_text.toPlainText()
@@ -1103,18 +1161,21 @@ class MainWindow(QMainWindow):
             clipboard.setText(text)
             self.statusbar.showMessage("Текст скопійовано в буфер обміну", 3000)
         else:
-            QMessageBox.information(self, MSG_INFO, "Немає тексту для копіювання")
+            msg = _create_styled_message_box(self, QMessageBox.Icon.Information, MSG_INFO, "Немає тексту для копіювання")
+            msg.exec()
             
     def export_text(self, format_type=None):
         """Експорт тексту у файл"""
         result_text = self._get_result_text()
         if result_text is None:
-            QMessageBox.information(self, MSG_INFO, "Немає тексту для збереження")
+            msg = _create_styled_message_box(self, QMessageBox.Icon.Information, MSG_INFO, "Немає тексту для збереження")
+            msg.exec()
             return
         
         text = result_text.toPlainText()
         if not text:
-            QMessageBox.information(self, MSG_INFO, "Немає тексту для збереження")
+            msg = _create_styled_message_box(self, QMessageBox.Icon.Information, MSG_INFO, "Немає тексту для збереження")
+            msg.exec()
             return
             
         if format_type is None:
@@ -1133,17 +1194,22 @@ class MainWindow(QMainWindow):
             success = self.controller.export_text(text, file_path)
             if success:
                 self.statusbar.showMessage(f"Збережено: {os.path.basename(file_path)}", 5000)
-                QMessageBox.information(self, "Успіх", "Файл успішно збережено!")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Information, "Успіх", "Файл успішно збережено!")
+                msg.exec()
             else:
-                QMessageBox.critical(self, MSG_ERROR, "Не вдалося зберегти файл")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Critical, MSG_ERROR, "Не вдалося зберегти файл")
+                msg.exec()
                 
     def clear_all(self):
         """Очищення всіх даних"""
-        reply = QMessageBox.question(
-            self, "Підтвердження",
+        msg = _create_styled_message_box(
+            self,
+            QMessageBox.Icon.Question,
+            "Підтвердження",
             "Ви впевнені, що хочете очистити всі дані?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
+        reply = msg.exec()
         
         if reply == QMessageBox.StandardButton.Yes:
             self.current_image_path = None

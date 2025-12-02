@@ -208,6 +208,9 @@ class UnifiedOCRAdapter:
             self._ensure_strategy_available()
             word_segments = self._segment_words_if_needed(processed_image, split_into_words)
             
+            if self._current_strategy is None:
+                raise RuntimeError("Жоден OCR рушій не доступний")
+            
             strategy_name = self._current_strategy.get_name()
             self._log_recognition_start(strategy_name, language, processed_image)
             
@@ -309,6 +312,9 @@ class UnifiedOCRAdapter:
             print(f"[OCR] Розпізнавання сегмента #{idx}...", flush=True)
             
             try:
+                if self._current_strategy is None:
+                    raise RuntimeError("Жоден OCR рушій не доступний")
+                
                 segment_text = self._current_strategy.recognize(segment.image, language)
                 if segment_text:
                     recognized_words.append(segment_text.strip())
@@ -330,6 +336,9 @@ class UnifiedOCRAdapter:
         logger.info(f"[OCR] Виклик strategy.recognize() для рушія '{strategy_name}'...")
         
         try:
+            if self._current_strategy is None:
+                raise RuntimeError("Жоден OCR рушій не доступний")
+            
             text = self._current_strategy.recognize(processed_image, language)
             result_len = len(text) if text else 0
             logger.info(f"[OCR] strategy.recognize() повернув результат: {result_len} символів")
@@ -383,6 +392,10 @@ class UnifiedOCRAdapter:
     
     def _apply_llm_validation(self, text: str, language: str) -> str:
         """Застосування LLM валідації та виправлення"""
+        if self.llm_processor is None:
+            logger.warning("[OCR] LLM процесор недоступний, використано просте виправлення")
+            return LLMPostProcessor.simple_correction(text)
+        
         try:
             lang_map = {
                 'eng': 'english',

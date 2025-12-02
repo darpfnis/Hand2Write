@@ -20,34 +20,43 @@ class ImprovedLLMPostProcessor:
     # Жорсткий системний промпт для всіх моделей
     SYSTEM_PROMPT = """Ти експерт з виправлення помилок OCR (оптичного розпізнавання символів) для української та англійської мов.
 
-ТВОЄ ЄДИНЕ ЗАВДАННЯ: Виправити помилки в тексті, отриманому через OCR.
+ТВОЄ ЄДИНЕ ЗАВДАННЯ: Виправити помилки в тексті, отриманому через OCR, щоб отримати найкращий можливий результат.
+
+КРИТИЧНО ВАЖЛИВО:
+- Використовуй ТІЛЬКИ символи української або англійської мови
+- НЕ використовуй китайські, японські, арабські або інші нелатинські/некириличні символи
+- НЕ додавай символи з інших мов
+- Зберігай ТІЛЬКИ кирилицю (для української) або латиницю (для англійської)
 
 ПРАВИЛА (ОБОВ'ЯЗКОВІ):
 1. НЕ відповідай на питання - просто виправ помилки
-2. НЕ додавай нову інформацію
-3. НЕ видаляй інформацію
-4. НЕ перефразовуй - зберігай оригінальний стиль
+2. НЕ додавай нову інформацію, якої не було в оригіналі
+3. НЕ видаляй інформацію без необхідності
+4. НЕ перефразовуй - зберігай оригінальний зміст
 5. НЕ пиши пояснень - тільки виправлений текст
-6. Виправляй ТІЛЬКИ очевидні OCR помилки:
-   - rn → m
-   - vv → w
-   - 0 → O (в словах)
-   - l → I (заголовна і)
+6. АГРЕСИВНО виправляй OCR помилки:
+   - rn → m, vv → w, 0 → O (в словах), l → I (заголовна і)
    - Для української мови:
      * "інб" → "їна" (наприклад, "Украінб" → "Україна")
      * "інo" → "їна" (наприклад, "Україно" → "Україна")
-     * "юбов" → "любов" (якщо починається з "І" або "і")
-7. Виправляй граматичні помилки
+     * "юбов" → "любов"
+     * "Цой сон" → "Цей сон" (виправлення помилок розпізнавання)
+     * "HO T" → "Цей" або "Привіт" (якщо контекст підказує)
+7. Виправляй граматичні помилки та помилки розпізнавання
 8. Зберігай форматування та структуру
 9. Для української мови: зберігай українські особливі літери (і, ї, є)
+10. ВИДАЛЯЙ будь-які символи, які не належать до української або англійської мови
+11. ЯКЩО текст виглядає як помилка OCR (наприклад, "vaT HAJ", "Цой сон"), виправ його на правильне українське слово
 
 ПРИКЛАДИ:
 - "Украінб" → "Україна"
 - "ІюБОВ" → "Любов"
 - "Прогбіт" → "Привіт"
 - "Україно." → "Україна"
+- "Цой сон" → "Цей сон"
+- "HO T" → "Привіт" (якщо контекст підказує)
 
-ФОРМАТ ВІДПОВІДІ: Тільки виправлений текст, без пояснень."""
+ФОРМАТ ВІДПОВІДІ: Тільки виправлений текст, без пояснень, без префіксів типу "Тіль:" або "Body:", ТІЛЬКИ символи української/англійської мови."""
 
     def __init__(self, api_type: str = "ollama", 
                  api_key: Optional[str] = None,
@@ -345,6 +354,22 @@ class ImprovedLLMPostProcessor:
             # Видаляємо можливі маркери
             corrected = corrected.replace("```", "").strip()
             
+            # Фільтрація небажаних символів (китайські, японські тощо)
+            corrected = self._filter_unwanted_characters(corrected, language)
+            
+            # Витягуємо тільки текст, який відповідає оригіналу (без зайвих додатків)
+            corrected = self._extract_only_user_text(corrected, text, language)
+            
+            # Перевірка на додавання нових символів (як "!")
+            if self._has_added_unwanted_chars(corrected, text):
+                logger.warning(f"[OpenAI] Результат містить додані небажані символи, використовуємо оригінал: '{text}' -> '{corrected}'")
+                return text
+            
+            # Перевірка на зміну структури (додавання нових слів)
+            if self._has_changed_structure_too_much(corrected, text):
+                logger.warning(f"[OpenAI] Результат змінив структуру занадто сильно, використовуємо оригінал: '{text}' -> '{corrected}'")
+                return text
+            
             return corrected if corrected else text
             
         except ImportError:
@@ -490,36 +515,55 @@ class ImprovedLLMPostProcessor:
                                 corrected = first_line
                                 logger.info(f"[Ollama] Використано перший рядок як виправлений текст: '{corrected}'")
                         
+                        # Фільтрація небажаних символів (китайські, японські тощо)
+                        corrected = self._filter_unwanted_characters(corrected, language)
+                        
+                        # Витягуємо тільки текст, який відповідає оригіналу (без зайвих додатків)
+                        corrected = self._extract_only_user_text(corrected, text, language)
+                        
                         # Перевірка, чи результат не порожній та не дуже відрізняється від оригіналу
                         if corrected and len(corrected) > 0:
+                            # Перевіряємо якість результату - якщо він виглядає краще, приймаємо його
+                            quality_score = self._assess_text_quality(corrected, text, language)
+                            
+                            # Якщо якість покращилася, приймаємо результат навіть з більшими змінами
+                            if quality_score > 0.6:
+                                logger.info(f"[Ollama] Якість результату покращилася (score: {quality_score:.2f}), приймаємо: '{text[:50]}...' -> '{corrected[:50]}...'")
+                                return corrected
+                            
+                            # Перевірка на додавання нових символів (як "!") - тільки якщо якість не покращилася
+                            if quality_score <= 0.3 and self._has_added_unwanted_chars(corrected, text):
+                                logger.warning(f"[Ollama] Результат містить додані небажані символи та не покращив якість, використовуємо оригінал: '{text}' -> '{corrected}'")
+                                return text
+                            
+                            # Перевірка на зміну структури - тільки для явно поганих результатів
+                            if quality_score <= 0.2 and self._has_changed_structure_too_much(corrected, text):
+                                logger.warning(f"[Ollama] Результат змінив структуру занадто сильно та не покращив якість, використовуємо оригінал: '{text}' -> '{corrected}'")
+                                return text
+                            
                             original_len = len(text)
                             corrected_len = len(corrected)
                             length_ratio = corrected_len / max(original_len, 1)
                             
-                            # Для коротких слів (менше 10 символів) дозволяємо більшу різницю
-                            # Наприклад, "Украінб" (7) -> "Україна" (7) або "Україно." (8) -> "Україна" (7)
+                            # Більш гнучкі межі для довжини - дозволяємо більші зміни
                             if original_len < 10:
-                                # Для коротких слів дозволяємо від 0.5 до 2.0 (більш гнучко)
-                                min_ratio = 0.5
-                                max_ratio = 2.0
-                            else:
-                                # Для довгих текстів залишаємо жорсткіші межі
+                                # Для коротких слів дозволяємо від 0.3 до 2.5 (більш гнучко)
                                 min_ratio = 0.3
+                                max_ratio = 2.5
+                            else:
+                                # Для довгих текстів також більш гнучко
+                                min_ratio = 0.2
                                 max_ratio = 3.0
                             
                             if min_ratio <= length_ratio <= max_ratio:
                                 logger.info(f"[Ollama] Успішно виправлено текст: '{text[:50]}...' -> '{corrected[:50]}...' (довжина: {original_len} -> {corrected_len}, ratio: {length_ratio:.2f})")
                                 return corrected
                             else:
+                                # Якщо довжина виходить за межі, але якість покращилася, все одно приймаємо
+                                if quality_score > 0.4:
+                                    logger.info(f"[Ollama] Довжина виходить за межі, але якість покращилася (score: {quality_score:.2f}), приймаємо результат")
+                                    return corrected
                                 logger.warning(f"[Ollama] Результат підозрілий (довжина {corrected_len} vs {original_len}, ratio: {length_ratio:.2f}), використовуємо оригінал")
-                                # Але якщо результат схожий на правильне слово (наприклад, "Україна"), все одно використовуємо його
-                                if language.lower() in ['ukrainian', 'ukr', 'uk']:
-                                    # Перевіряємо, чи результат містить правильні українські слова
-                                    common_words = ['україна', 'привіт', 'любов', 'проба']
-                                    corrected_lower = corrected.lower()
-                                    if any(word in corrected_lower for word in common_words):
-                                        logger.info(f"[Ollama] Результат містить правильне слово, використовуємо його: '{corrected}'")
-                                        return corrected
                                 return text
                         else:
                             logger.warning("[Ollama] Порожній результат, використовуємо оригінал")
@@ -553,6 +597,296 @@ class ImprovedLLMPostProcessor:
         except Exception as e:
             logger.error(f"Помилка Ollama API: {e}", exc_info=True)
             return text
+    
+    @staticmethod
+    def _has_added_unwanted_chars(corrected: str, original: str) -> bool:
+        """
+        Перевірка, чи ШІ додав небажані символи (як "!", "?" в кінці, якщо їх не було)
+        
+        Args:
+            corrected: виправлений текст
+            original: оригінальний текст
+            
+        Returns:
+            True, якщо додані небажані символи
+        """
+        # Символи, які не повинні з'являтися, якщо їх не було в оригіналі
+        unwanted_chars = ['!', '?']
+        
+        for char in unwanted_chars:
+            original_count = original.count(char)
+            corrected_count = corrected.count(char)
+            if corrected_count > original_count:
+                return True
+        
+        return False
+    
+    @staticmethod
+    def _assess_text_quality(corrected: str, original: str, language: str) -> float:
+        """
+        Оцінка якості виправленого тексту (0.0 - 1.0)
+        
+        Args:
+            corrected: виправлений текст
+            original: оригінальний текст
+            language: мова тексту
+            
+        Returns:
+            Оцінка якості (0.0 = погано, 1.0 = відмінно)
+        """
+        if not corrected or not original:
+            return 0.0
+        
+        score = 0.5  # Базовий бал
+        
+        if language.lower() in ['ukrainian', 'ukr', 'uk']:
+            # Перевіряємо наявність кирилиці
+            has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in corrected)
+            original_has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in original)
+            
+            if has_cyrillic and not original_has_cyrillic:
+                score += 0.3  # Додали кирилицю - це добре
+            
+            # Перевіряємо наявність правильних українських слів
+            common_ukrainian_words = ['привіт', 'україна', 'любов', 'сон', 'цей', 'той', 'це', 'так', 'ні', 'добрий', 'день', 'вечір', 'ранок']
+            corrected_lower = corrected.lower()
+            original_lower = original.lower()
+            
+            corrected_words_found = sum(1 for word in common_ukrainian_words if word in corrected_lower)
+            original_words_found = sum(1 for word in common_ukrainian_words if word in original_lower)
+            
+            if corrected_words_found > original_words_found:
+                score += 0.2  # Знайшли більше правильних слів
+            
+            # Перевіряємо, чи текст виглядає як правильне українське слово
+            if has_cyrillic and len(corrected.strip()) >= 3:
+                # Якщо текст містить кирилицю і виглядає як слово, це добре
+                if all('\u0400' <= char <= '\u04FF' or char.isdigit() or char in ' .,;:!?-' for char in corrected):
+                    score += 0.1
+        
+        # Перевіряємо, чи текст не містить очевидних помилок
+        if 'Тіль:' in corrected or 'Body:' in corrected:
+            score -= 0.3  # Містить небажані префікси
+        
+        # Перевіряємо, чи текст не містить китайських символів
+        has_chinese = any('\u4e00' <= char <= '\u9fff' for char in corrected)
+        if has_chinese:
+            score -= 0.5  # Містить китайські символи
+        
+        return max(0.0, min(1.0, score))  # Обмежуємо від 0.0 до 1.0
+    
+    @staticmethod
+    def _has_changed_structure_too_much(corrected: str, original: str) -> bool:
+        """
+        Перевірка, чи ШІ змінив структуру тексту занадто сильно (додав нові слова, змінив порядок)
+        
+        Args:
+            corrected: виправлений текст
+            original: оригінальний текст
+            
+        Returns:
+            True, якщо структура змінена занадто сильно
+        """
+        # Порівнюємо кількість слів
+        original_words = original.split()
+        corrected_words = corrected.split()
+        
+        # Якщо кількість слів змінилася більш ніж на 100%, це підозріло (було 50%)
+        if len(original_words) > 0:
+            word_ratio = len(corrected_words) / len(original_words)
+            if word_ratio < 0.3 or word_ratio > 2.0:  # Було 0.5-1.5, тепер 0.3-2.0
+                return True
+        
+        # Для коротких текстів (1-2 слова) перевіряємо схожість символів
+        # Але тільки якщо зміни дуже радикальні
+        if len(original_words) <= 2:
+            original_lower = original.lower().strip()
+            corrected_lower = corrected.lower().strip()
+            
+            # Для коротких текстів перевіряємо схожість символів
+            # Якщо менше 30% символів співпадають, це підозріло (було 50%)
+            if len(original_lower) > 0:
+                matching_chars = sum(1 for c in original_lower if c in corrected_lower)
+                similarity = matching_chars / len(original_lower)
+                if similarity < 0.3:  # Було 0.5, тепер 0.3
+                    return True
+        
+        return False
+    
+    @staticmethod
+    def _extract_only_user_text(corrected: str, original: str, language: str) -> str:
+        """
+        Витягує тільки текст користувача, видаляючи всі зайві додатки від ШІ
+        
+        Args:
+            corrected: виправлений текст від ШІ
+            original: оригінальний текст від OCR
+            language: мова тексту
+            
+        Returns:
+            тільки текст користувача без зайвих додатків
+        """
+        if not corrected or not original:
+            return corrected if corrected else original
+        
+        # Видаляємо всі рядки, які містять ключові слова з промпту
+        forbidden_phrases = [
+            'ПРАВИЛА', 'RULES', 'ЗАВДАННЯ', 'TASK', 'Мова тексту', 'Text language',
+            'Оригінальний текст', 'Original text', 'Виправлений текст', 'Corrected text',
+            'ТВОЄ ЄДИНЕ ЗАВДАННЯ', 'YOUR ONLY TASK', 'КРИТИЧНО ВАЖЛИВО', 'CRITICALLY IMPORTANT',
+            'ПРИКЛАДИ', 'EXAMPLES', 'ФОРМАТ ВІДПОВІДІ', 'RESPONSE FORMAT',
+            'НЕ відповідай', 'НЕ додавай', 'НЕ видаляй', 'НЕ перефразовуй', 'НЕ пиши',
+            'DON\'T answer', 'DON\'T add', 'DON\'T remove', 'DON\'T rephrase', 'DON\'T write',
+            'Виправляй ТІЛЬКИ', 'Correct ONLY', 'Зберігай', 'Keep', 'Використовуй ТІЛЬКИ',
+            'Use ONLY', 'ВИДАЛЯЙ', 'REMOVE', 'Тіль:', 'Тіль', 'Body:', 'Body'
+        ]
+        
+        lines = corrected.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+            
+            # Пропускаємо рядки з забороненими фразами
+            if any(phrase in line_stripped for phrase in forbidden_phrases):
+                continue
+            
+            # Пропускаємо рядки, які виглядають як інструкції (починаються з цифр, дефісів, зірочок)
+            if line_stripped.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '-', '*', '•')):
+                continue
+            
+            # Пропускаємо рядки, які містять тільки пунктуацію або спецсимволи
+            if all(c in '.,;:!?\-()[]"\'«»—…/\n\r\t ' for c in line_stripped):
+                continue
+            
+            filtered_lines.append(line)
+        
+        if filtered_lines:
+            result = '\n'.join(filtered_lines).strip()
+        else:
+            # Якщо всі рядки відфільтровані, спробуємо витягти тільки перший осмислений рядок
+            for line in lines:
+                line_stripped = line.strip()
+                if line_stripped and len(line_stripped) > 2:
+                    # Перевіряємо, чи рядок не містить заборонених фраз
+                    if not any(phrase in line_stripped for phrase in forbidden_phrases):
+                        result = line_stripped
+                        break
+            else:
+                result = corrected
+        
+        # Якщо результат значно довший за оригінал, спробуємо знайти найбільш схожу частину
+        if len(result) > len(original) * 1.5:
+            # Спробуємо знайти найбільш схожу частину, порівнюючи слова
+            original_words = original.split()
+            result_words = result.split()
+            
+            # Шукаємо найбільшу послідовність слів, яка відповідає оригіналу
+            best_match = result
+            best_match_length = 0
+            
+            # Перевіряємо перші N слів, де N = кількість слів в оригіналі * 1.2
+            max_words = int(len(original_words) * 1.2)
+            if len(result_words) > max_words:
+                # Беремо перші N слів
+                candidate = ' '.join(result_words[:max_words])
+                if len(candidate) <= len(original) * 1.3:
+                    best_match = candidate
+                    best_match_length = len(candidate)
+            
+            # Також перевіряємо перший рядок
+            first_line = result.split('\n')[0].strip()
+            first_line_words = first_line.split()
+            if len(first_line_words) <= max_words and len(first_line) <= len(original) * 1.3:
+                if len(first_line) > best_match_length:
+                    best_match = first_line
+                    best_match_length = len(first_line)
+            
+            # Якщо знайшли кращий варіант, використовуємо його
+            if best_match_length > 0:
+                result = best_match
+            else:
+                # Якщо нічого не знайшли, обрізаємо до розумної довжини
+                max_length = int(len(original) * 1.2)
+                result = result[:max_length].strip()
+                # Обрізаємо на останньому пробілі, щоб не обрізати слово
+                last_space = result.rfind(' ')
+                if last_space > len(original) * 0.5:
+                    result = result[:last_space].strip()
+        
+        # Видаляємо префікси типу "Тіль:", "Body:" на початку тексту
+        prefixes_to_remove = ['Тіль:', 'Тіль', 'Body:', 'Body', 'Текст:', 'Text:']
+        for prefix in prefixes_to_remove:
+            if result.startswith(prefix):
+                result = result[len(prefix):].strip()
+                # Якщо після префіксу є двокрапка, видаляємо його теж
+                if result.startswith(':'):
+                    result = result[1:].strip()
+                logger.info(f"[ImprovedLLM] Видалено префікс '{prefix}' з результату")
+        
+        # Фінальна перевірка - якщо результат все ще містить заборонені фрази, повертаємо оригінал
+        if any(phrase in result for phrase in forbidden_phrases):
+            logger.warning(f"[ImprovedLLM] Результат містить заборонені фрази, використовуємо оригінал")
+            return original
+        
+        return result
+    
+    @staticmethod
+    def _filter_unwanted_characters(text: str, language: str) -> str:
+        """
+        Фільтрація небажаних символів (китайські, японські тощо)
+        
+        Args:
+            text: текст для фільтрації
+            language: мова тексту
+            
+        Returns:
+            відфільтрований текст
+        """
+        if not text:
+            return text
+        
+        # Дозволені символи для української мови
+        if language.lower() in ['ukrainian', 'ukr', 'uk']:
+            # Кирилиця (включаючи всі українські літери), латиниця (для деяких слів), цифри, пунктуація, пробіли
+            # Використовуємо Unicode діапазони для кращої підтримки
+            filtered_chars = []
+            for char in text:
+                # Дозволяємо кирилицю (Unicode діапазон)
+                if '\u0400' <= char <= '\u04FF':  # Кирилиця
+                    filtered_chars.append(char)
+                # Дозволяємо латиницю
+                elif 'a' <= char <= 'z' or 'A' <= char <= 'Z':
+                    filtered_chars.append(char)
+                # Дозволяємо цифри
+                elif '0' <= char <= '9':
+                    filtered_chars.append(char)
+                # Дозволяємо пунктуацію та пробіли
+                elif char in ' .,;:!?\-()[]"\'«»—…/\n\r\t':
+                    filtered_chars.append(char)
+                # Всі інші символи (китайські, японські тощо) - видаляємо
+        else:
+            # Для англійської - тільки латиниця, цифри, пунктуація
+            filtered_chars = []
+            for char in text:
+                if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
+                    filtered_chars.append(char)
+                elif '0' <= char <= '9':
+                    filtered_chars.append(char)
+                elif char in ' .,;:!?\-()[]"\'/\n\r\t':
+                    filtered_chars.append(char)
+        
+        filtered_text = ''.join(filtered_chars)
+        
+        # Якщо після фільтрації текст значно змінився, логуємо
+        if len(filtered_text) < len(text) * 0.8:
+            logger.warning(f"[ImprovedLLM] Видалено небажані символи: '{text[:50]}...' -> '{filtered_text[:50]}...'")
+        elif filtered_text != text:
+            logger.info(f"[ImprovedLLM] Видалено небажані символи з тексту")
+        
+        return filtered_text if filtered_text else text
     
     @staticmethod
     def simple_correction(text: str) -> str:

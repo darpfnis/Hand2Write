@@ -63,7 +63,9 @@ class OCRSettingsPanel(QGroupBox):
         layout.addLayout(lang_layout)
         
         # === Автоматичний вибір найкращого рушія ===
-        self.best_engine_check = QCheckBox("Автоматично вибирати найкращий OCR рушій за мовою")
+        best_engine_layout = QHBoxLayout()
+        best_engine_layout.setSpacing(8)
+        self.best_engine_check = QCheckBox()
         self.best_engine_check.setChecked(True)  # За замовчуванням увімкнено
         self.best_engine_check.setToolTip(
             "<b>Автоматичний вибір найкращого OCR рушія</b><br><br>"
@@ -76,53 +78,57 @@ class OCRSettingsPanel(QGroupBox):
             "<b>Переваги:</b><br>"
             "• Вища точність розпізнавання<br>"
             "• Автоматичний вибір оптимального рушія<br>"
-            "• Швидка робота (не потребує AI)<br><br>"
+            "• Швидка робота (не потребує ШІ)<br><br>"
             "<b>Рекомендації:</b><br>"
             "• Рекомендується для рукописного тексту<br>"
             "• Може збільшити час обробки (запускаються всі рушії)"
         )
         self.best_engine_check.toggled.connect(self._on_best_engine_toggled)
-        layout.addWidget(self.best_engine_check)
-        # Встановлюємо початкову видимість вибору рушія
-        self._on_best_engine_toggled(self.best_engine_check.isChecked())
+        best_engine_layout.addWidget(self.best_engine_check)
         
-        # Описовий текст для чекбоксу "найкращий рушій"
+        # Описовий текст для чекбоксу "найкращий рушій" в одному рядку
         best_engine_desc = QLabel(
             "Система запустить всі доступні OCR рушії та автоматично вибере найкращий результат "
             "на основі оцінки якості (наявність кирилиці, правильні слова, читабельність тощо)."
         )
-        best_engine_desc.setWordWrap(True)
-        best_engine_desc.setStyleSheet("color: #666; font-size: 9pt; padding-left: 20px;")
-        layout.addWidget(best_engine_desc)
+        best_engine_desc.setWordWrap(False)
+        best_engine_desc.setStyleSheet("color: #666; font-size: 9pt;")
+        best_engine_layout.addWidget(best_engine_desc, 1)  # 1 = stretch factor
+        layout.addLayout(best_engine_layout)
+        # Встановлюємо початкову видимість вибору рушія
+        self._on_best_engine_toggled(self.best_engine_check.isChecked())
         
-        # === AI корекція ===
-        self.ai_correction_check = QCheckBox("Використовувати AI для виправлення помилок розпізнавання")
+        # === ШІ корекція ===
+        ai_correction_layout = QHBoxLayout()
+        ai_correction_layout.setSpacing(8)
+        self.ai_correction_check = QCheckBox()
         self.ai_correction_check.setToolTip(
-            "<b>AI корекція результатів OCR</b><br><br>"
+            "<b>ШІ корекція результатів OCR</b><br><br>"
             "Автоматично виправляє помилки розпізнавання через штучний інтелект.<br><br>"
             "<b>Як це працює:</b><br>"
-            "• Після розпізнавання текст відправляється в AI модель<br>"
+            "• Після розпізнавання текст відправляється в ШІ модель<br>"
             "• Модель аналізує контекст та виправляє помилки<br>"
             "• Результат стає більш точним та читабельним<br><br>"
             "<b>Вимоги:</b><br>"
-            "• Потребує налаштований Ollama або OpenAI API<br>"
+            "• Потребує налаштований Ollama сервер<br>"
             "• Може збільшити час обробки<br><br>"
             "<b>Рекомендації:</b><br>"
             "• Увімкніть для важкого рукописного тексту<br>"
             "• Вимкніть для швидшого розпізнавання<br>"
             "• Особливо корисна для української мови"
         )
-        layout.addWidget(self.ai_correction_check)
+        ai_correction_layout.addWidget(self.ai_correction_check)
         
-        # Описовий текст для чекбоксу "AI корекція"
+        # Описовий текст для чекбоксу "ШІ корекція" в одному рядку
         ai_correction_desc = QLabel(
-            "Після розпізнавання текст буде відправлено в AI модель (Ollama або OpenAI) "
+            "Після розпізнавання текст буде відправлено в ШІ модель (Ollama) "
             "для автоматичного виправлення помилок. Це покращує точність, особливо для "
-            "рукописного тексту, але потребує налаштований AI сервер."
+            "рукописного тексту, але потребує налаштований ШІ сервер."
         )
-        ai_correction_desc.setWordWrap(True)
-        ai_correction_desc.setStyleSheet("color: #666; font-size: 9pt; padding-left: 20px;")
-        layout.addWidget(ai_correction_desc)
+        ai_correction_desc.setWordWrap(False)
+        ai_correction_desc.setStyleSheet("color: #666; font-size: 9pt;")
+        ai_correction_layout.addWidget(ai_correction_desc, 1)  # 1 = stretch factor
+        layout.addLayout(ai_correction_layout)
         
         # === Прогрес-бар (спочатку прихований) ===
         self.progress_bar = QProgressBar()
@@ -307,7 +313,7 @@ class OCRSettingsPanel(QGroupBox):
         return lang_map.get(self.language_combo.currentText(), LANG_UKRAINIAN)
     
     def is_ai_correction_enabled(self) -> bool:
-        """Чи увімкнена AI корекція"""
+        """Чи увімкнена ШІ корекція"""
         return self.ai_correction_check.isChecked()
     
     def show_progress(self, value: int, message: str = ""):

@@ -118,6 +118,14 @@ class TesseractStrategy(OCRStrategy):
         if not self._available:
             raise RuntimeError("Tesseract не доступний")
         
+        # Валідація вхідного зображення
+        if image is None:
+            raise ValueError("Зображення не може бути None")
+        if image.size == 0:
+            raise ValueError("Зображення порожнє")
+        if len(image.shape) < 2 or len(image.shape) > 3:
+            raise ValueError(f"Невірна розмірність зображення: {image.shape}")
+        
         try:
             import pytesseract
             import cv2

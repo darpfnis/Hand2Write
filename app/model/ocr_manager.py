@@ -690,14 +690,30 @@ class PaddleOCRStrategy(OCRStrategy):
         has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in result_text)
         has_latin = any(char.isalpha() and ord(char) < 128 and not ('\u0400' <= char <= '\u04FF') for char in result_text)
         
-        if not (has_latin or not has_cyrillic):
-            return result_text
+        # Якщо вже є кирилиця, застосовуємо тільки спеціальні виправлення
+        if has_cyrillic:
+            corrected_text = self._apply_special_corrections(result_text)
+            if corrected_text != result_text:
+                logger.info(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'")
+                print(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'", flush=True)
+            return corrected_text
         
-        logger.info(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку")
-        print(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку", flush=True)
-        
+        # Якщо тільки латиниця, застосовуємо спеціальні виправлення
         corrected_text = self._apply_special_corrections(result_text)
-        corrected_text = self._apply_latin_to_cyrillic_replacements(corrected_text)
+        
+        # Автоматичну конвертацію латиниці в кирилицю застосовуємо тільки для очевидних помилок OCR
+        # (наприклад, коли це виглядає як помилка розпізнавання, а не як англійський текст)
+        # Не застосовуємо для текстів, які виглядають як повністю неправильне розпізнавання
+        if has_latin and not has_cyrillic:
+            # Перевіряємо, чи текст виглядає як помилка OCR (містить змішані великі/малі літери без сенсу)
+            # або як очевидні помилки (наприклад, "Tect" -> "Тест")
+            if self._looks_like_ocr_error(corrected_text):
+                logger.info(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку")
+                print(f"[PaddleOCR-OCRManager] has_cyrillic={has_cyrillic}, has_latin={has_latin}, застосовуємо пост-обробку", flush=True)
+                corrected_text = self._apply_latin_to_cyrillic_replacements(corrected_text)
+            else:
+                logger.info(f"[PaddleOCR-OCRManager] Текст '{corrected_text}' не виглядає як помилка OCR, пропускаємо конвертацію")
+                print(f"[PaddleOCR-OCRManager] Текст '{corrected_text}' не виглядає як помилка OCR, пропускаємо конвертацію", flush=True)
         
         if corrected_text != result_text:
             logger.info(f"[PaddleOCR-OCRManager] Виправлено: '{result_text}' -> '{corrected_text}'")
@@ -705,6 +721,49 @@ class PaddleOCRStrategy(OCRStrategy):
             return corrected_text
         
         return result_text
+    
+    def _looks_like_ocr_error(self, text: str) -> bool:
+        """
+        Перевірка, чи текст виглядає як помилка OCR (а не як англійський текст)
+        
+        Args:
+            text: текст для перевірки
+            
+        Returns:
+            True, якщо текст виглядає як помилка OCR
+        """
+        if not text or len(text.strip()) < 2:
+            return False
+        
+        text_lower = text.lower().strip()
+        
+        # Якщо текст містить змішані великі/малі літери без сенсу (наприклад, "vaT HAJ")
+        # або виглядає як очевидні помилки OCR
+        has_mixed_case = any(c.isupper() for c in text) and any(c.islower() for c in text)
+        
+        # Перевіряємо, чи це виглядає як англійське слово (якщо так, не конвертуємо)
+        # Прості англійські слова, які не потрібно конвертувати
+        common_english_words = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use']
+        
+        # Якщо текст схожий на англійське слово, не конвертуємо
+        words = text_lower.split()
+        if len(words) == 1 and text_lower in common_english_words:
+            return False
+        
+        # Якщо текст містить змішані великі/малі літери без сенсу, це може бути помилка OCR
+        if has_mixed_case and len(text.strip()) <= 10:
+            # Перевіряємо, чи це не виглядає як англійське слово з великої літери
+            if text[0].isupper() and text[1:].islower() and len(text) > 3:
+                # Може бути англійське слово, не конвертуємо
+                return False
+            return True
+        
+        # Якщо текст дуже короткий (1-3 символи) і містить тільки латиницю, це може бути помилка
+        if len(text.strip()) <= 3 and text.isalpha():
+            return True
+        
+        # Для довших текстів не конвертуємо автоматично
+        return False
     
     def _apply_special_corrections(self, text: str) -> str:
         """Застосування спеціальних виправлень"""

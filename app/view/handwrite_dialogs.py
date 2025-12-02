@@ -7,6 +7,43 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QSpinBox, QComboBox, QLineEdit, QMessageBox)
 from PyQt6.QtCore import Qt
 
+# Стиль для QMessageBox з білим текстом
+MESSAGE_BOX_STYLE = """
+    QMessageBox {
+        background-color: #2c3e50;
+        color: white;
+    }
+    QMessageBox QLabel {
+        color: white;
+        background-color: transparent;
+    }
+    QMessageBox QPushButton {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 4px;
+    }
+    QMessageBox QPushButton:hover {
+        background-color: #2980b9;
+    }
+    QMessageBox QPushButton:pressed {
+        background-color: #21618c;
+    }
+"""
+
+
+def _create_styled_message_box(parent, icon, title, text, buttons=None):
+    """Створення QMessageBox з білим текстом"""
+    msg = QMessageBox(parent)
+    msg.setIcon(icon)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setStyleSheet(MESSAGE_BOX_STYLE)
+    if buttons:
+        msg.setStandardButtons(buttons)
+    return msg
+
 
 class SettingsDialog(QDialog):
     """Діалог налаштувань"""
@@ -72,19 +109,10 @@ class SettingsDialog(QDialog):
         api_type_layout = QHBoxLayout()
         api_type_layout.addWidget(QLabel("Тип API:"))
         self.api_type_combo = QComboBox()
-        self.api_type_combo.addItems(["OpenAI", "Ollama", "Local"])
+        self.api_type_combo.addItems(["Ollama", "Local"])
         self.api_type_combo.currentTextChanged.connect(self.on_api_type_changed)
         api_type_layout.addWidget(self.api_type_combo)
         llm_layout.addLayout(api_type_layout)
-        
-        # API Key (для OpenAI)
-        self.api_key_layout = QHBoxLayout()
-        self.api_key_layout.addWidget(QLabel("API Key:"))
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setPlaceholderText("sk-...")
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_layout.addWidget(self.api_key_edit)
-        llm_layout.addLayout(self.api_key_layout)
         
         # API URL (для Ollama/Local)
         self.api_url_layout = QHBoxLayout()
@@ -94,15 +122,14 @@ class SettingsDialog(QDialog):
         self.api_url_layout.addWidget(self.api_url_edit)
         llm_layout.addLayout(self.api_url_layout)
         
-        # Модель (для Ollama/Local/OpenAI)
+        # Модель (для Ollama/Local)
         self.model_layout = QHBoxLayout()
         self.model_layout.addWidget(QLabel("Модель:"))
         self.model_edit = QLineEdit()
-        self.model_edit.setPlaceholderText("llama3.2:latest або gpt-4o-mini")
+        self.model_edit.setPlaceholderText("llama3.2:latest")
         self.model_edit.setToolTip(
             "Назва моделі:\n"
             "• Для Ollama/Local: llama3.2:1b, llama3.2:latest\n"
-            "• Для OpenAI: gpt-4o-mini, gpt-4-vision-preview\n"
             "• Залиште порожнім для автоматичного вибору"
         )
         self.model_layout.addWidget(self.model_edit)
@@ -159,7 +186,7 @@ class SettingsDialog(QDialog):
             if index >= 0:
                 self.api_type_combo.setCurrentIndex(index)
             
-            self.api_key_edit.setText(llm_config.get('api_key', ''))
+            # API key більше не використовується (тільки Ollama)
             self.api_url_edit.setText(llm_config.get('api_url', 'http://localhost:11434'))
             self.model_edit.setText(llm_config.get('model', ''))
             
@@ -178,13 +205,6 @@ class SettingsDialog(QDialog):
         api_type = self.api_type_combo.currentText().lower()
         
         # Показуємо/ховаємо поля залежно від типу API
-        for i in range(self.api_key_layout.count()):
-            item = self.api_key_layout.itemAt(i)
-            if item:
-                widget = item.widget()
-                if widget:
-                    widget.setVisible(api_type == 'openai')
-        
         for i in range(self.api_url_layout.count()):
             item = self.api_url_layout.itemAt(i)
             if item:
@@ -198,7 +218,7 @@ class SettingsDialog(QDialog):
             from model.llm_postprocessor import LLMPostProcessor
             
             api_type = self.api_type_combo.currentText().lower()
-            api_key = self.api_key_edit.text() if api_type == 'openai' else None
+            api_key = None
             api_url = self.api_url_edit.text() if api_type in ['ollama', 'local'] else None
             
             processor = LLMPostProcessor(
@@ -210,15 +230,18 @@ class SettingsDialog(QDialog):
             if processor.is_available():
                 self.llm_status_label.setText("Статус: ✓ Доступний")
                 self.llm_status_label.setStyleSheet("color: green;")
-                QMessageBox.information(self, "Успіх", "LLM API доступний та готовий до використання!")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Information, "Успіх", "LLM API доступний та готовий до використання!")
+                msg.exec()
             else:
                 self.llm_status_label.setText("Статус: ✗ Недоступний")
                 self.llm_status_label.setStyleSheet("color: red;")
-                QMessageBox.warning(self, "Помилка", "LLM API недоступний. Перевірте налаштування.")
+                msg = _create_styled_message_box(self, QMessageBox.Icon.Warning, "Помилка", "LLM API недоступний. Перевірте налаштування.")
+                msg.exec()
         except Exception as e:
             self.llm_status_label.setText(f"Статус: ✗ Помилка ({str(e)[:30]})")
             self.llm_status_label.setStyleSheet("color: red;")
-            QMessageBox.critical(self, "Помилка", f"Помилка перевірки: {e}")
+            msg = _create_styled_message_box(self, QMessageBox.Icon.Critical, "Помилка", f"Помилка перевірки: {e}")
+            msg.exec()
     
     def show_llm_info(self):
         """Показати інформацію про отримання ШІ"""
@@ -227,19 +250,11 @@ class SettingsDialog(QDialog):
         info_text = """
 <h3>Як отримати ШІ для корекції OCR?</h3>
 
-<p><b>Варіант 1: OpenAI API (найкраща точність)</b></p>
-<ul>
-<li>Перейдіть на <a href='https://platform.openai.com/api-keys'>platform.openai.com/api-keys</a></li>
-<li>Створіть API ключ (безкоштовно)</li>
-<li>Поповніть баланс ($5-10 достатньо на місяць)</li>
-<li>Вартість: ~$0.10-0.20 за 1000 сторінок</li>
-</ul>
-
-<p><b>Варіант 2: Ollama (безкоштовний, локальний)</b></p>
+<p><b>Ollama (безкоштовний, локальний)</b></p>
 <ul>
 <li>Завантажте з <a href='https://ollama.ai'>ollama.ai</a></li>
 <li>Встановіть та запустіть: <code>ollama serve</code></li>
-<li>Завантажте модель: <code>ollama pull llama3.2</code></li>
+<li>Завантажте модель: <code>ollama pull llama3.2:1b</code></li>
 <li>Повністю безкоштовно, працює офлайн</li>
 <li>Вимоги: мінімум 8GB RAM</li>
 </ul>
@@ -264,7 +279,7 @@ class SettingsDialog(QDialog):
     def get_settings(self):
         """Отримання налаштувань"""
         api_type = self.api_type_combo.currentText().lower()
-        api_key = self.api_key_edit.text() if api_type == 'openai' else None
+        api_key = None
         api_url = self.api_url_edit.text() if api_type in ['ollama', 'local'] else 'http://localhost:11434'
         
         model = self.model_edit.text().strip() or None

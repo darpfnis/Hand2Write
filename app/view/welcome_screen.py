@@ -112,14 +112,14 @@ class WelcomeScreen(QWidget):
         button_frame.setStyleSheet("""
             ClickableFrame {{
                 background-color: white;
-                border: 3px solid {color};
+                border: 4px solid {color};
                 border-radius: 15px;
             }}
             ClickableFrame:hover {{
                 background-color: #f5f5f5;
-                border: 3px solid {color};
+                border: 4px solid {color};
             }}
-        """)
+        """.format(color=color))
         
         frame_layout = QVBoxLayout(button_frame)
         frame_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)

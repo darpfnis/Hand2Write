@@ -48,8 +48,10 @@ class OptimizedPreprocessor:
         Raises:
             ValueError: якщо зображення некоректне або порожнє
         """
+        # Валідація має викидати помилки, не обробляти їх
+        self._validate_image(image)
+        
         try:
-            self._validate_image(image)
             gray = self._to_grayscale_uint8(image)
             gray = self._apply_preprocessing_pipeline(gray)
             if gray.dtype != np.uint8:
@@ -57,10 +59,14 @@ class OptimizedPreprocessor:
             return gray
         except Exception as e:
             logger.error(f"Помилка обробки зображення: {e}")
-            # Повертаємо оригінальне зображення у випадку помилки
-            if len(image.shape) == 3:
-                return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            return image.astype(np.uint8) if image.dtype != np.uint8 else image
+            # Повертаємо оригінальне зображення у випадку помилки обробки
+            # (тільки якщо зображення валідне, але сталася помилка під час обробки)
+            if image is not None and hasattr(image, 'shape') and len(image.shape) >= 2:
+                if len(image.shape) == 3:
+                    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                return image.astype(np.uint8) if image.dtype != np.uint8 else image
+            # Якщо не можемо повернути оригінальне, викидаємо помилку
+            raise RuntimeError(f"Не вдалося обробити зображення: {e}") from e
 
     def _validate_image(self, image: np.ndarray) -> None:
         """Валідація вхідного зображення."""
