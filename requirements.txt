@@ -1,0 +1,40 @@
+# Система перетворення рукописного тексту - Залежності
+# Python 3.8+
+
+# Графічний інтерфейс
+PyQt6>=6.4.0
+
+# Обробка зображень
+opencv-python>=4.8.0
+Pillow>=9.0.0
+numpy>=1.24.0
+
+# OCR рушії
+pytesseract>=0.3.10
+easyocr>=1.7.0
+paddleocr>=2.7.0
+
+# PyTorch (для EasyOCR та PaddleOCR)
+# Примітка: PyTorch може бути важким для встановлення
+# Для CPU версії (рекомендовано):
+#   Windows: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   Linux/Mac: pip install torch torchvision
+# Для GPU версії (якщо є CUDA):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Експорт документів
+reportlab>=4.0.0
+python-docx>=0.8.11
+
+# HTTP запити (для Ollama API)
+requests>=2.31.0
+
+# Опціональні залежності:
+# OpenAI (якщо потрібна підтримка OpenAI API - зараз не використовується)
+# openai>=1.0.0
+
+# Тестування (опціонально)
+pytest>=7.4.0
+
